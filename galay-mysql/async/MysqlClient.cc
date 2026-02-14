@@ -1,11 +1,27 @@
 #include "MysqlClient.h"
 #include "galay-mysql/base/MysqlLog.h"
+#include <concepts>
+#include <utility>
 
 namespace galay::mysql
 {
 
 namespace detail
 {
+
+template<typename Fn>
+concept IoErrorCallback = std::invocable<Fn, const IOError&>;
+
+template<typename Fn>
+concept VoidCallback = std::invocable<Fn>;
+
+template<typename Fn>
+concept ParseErrorCallback = std::invocable<Fn, MysqlError>;
+
+template<typename Fn>
+concept ParseFn = requires(Fn&& fn) {
+    { std::forward<Fn>(fn)() } -> std::same_as<std::expected<bool, MysqlError>>;
+};
 
 inline void syncSendWindow(const std::string& payload, size_t sent, const char*& buffer, size_t& length)
 {
@@ -19,6 +35,9 @@ inline void syncSendWindow(const std::string& payload, size_t sent, const char*&
 }
 
 template<typename OnIoError, typename OnZeroSend, typename OnDone>
+requires IoErrorCallback<OnIoError> &&
+         VoidCallback<OnZeroSend> &&
+         VoidCallback<OnDone>
 bool handleSendResult(std::expected<size_t, IOError>& io_result,
                       size_t& sent,
                       size_t total,
@@ -46,6 +65,7 @@ bool handleSendResult(std::expected<size_t, IOError>& io_result,
 }
 
 template<typename OnNoSpace>
+requires VoidCallback<OnNoSpace>
 bool prepareReadIovecs(RingBuffer& ring_buffer, std::vector<struct iovec>& iovecs, OnNoSpace&& on_no_space)
 {
     iovecs = ring_buffer.getWriteIovecs();
@@ -56,8 +76,10 @@ bool prepareReadIovecs(RingBuffer& ring_buffer, std::vector<struct iovec>& iovec
     return true;
 }
 
-template<typename ParseFn, typename OnParseError>
-bool parseOrSetError(ParseFn&& parse_fn, OnParseError&& on_parse_error)
+template<typename ParseFnType, typename OnParseError>
+requires ParseFn<ParseFnType> &&
+         ParseErrorCallback<OnParseError>
+bool parseOrSetError(ParseFnType&& parse_fn, OnParseError&& on_parse_error)
 {
     auto parsed = parse_fn();
     if (!parsed.has_value()) {
@@ -67,12 +89,16 @@ bool parseOrSetError(ParseFn&& parse_fn, OnParseError&& on_parse_error)
     return parsed.value();
 }
 
-template<typename OnIoError, typename OnClosed, typename ParseFn, typename OnParseError>
+template<typename OnIoError, typename OnClosed, typename ParseFnType, typename OnParseError>
+requires IoErrorCallback<OnIoError> &&
+         VoidCallback<OnClosed> &&
+         ParseFn<ParseFnType> &&
+         ParseErrorCallback<OnParseError>
 bool handleReadResult(std::expected<size_t, IOError>& io_result,
                       RingBuffer& ring_buffer,
                       OnIoError&& on_io_error,
                       OnClosed&& on_closed,
-                      ParseFn&& parse_fn,
+                      ParseFnType&& parse_fn,
                       OnParseError&& on_parse_error)
 {
     if (!io_result.has_value()) {
@@ -87,7 +113,7 @@ bool handleReadResult(std::expected<size_t, IOError>& io_result,
     }
 
     ring_buffer.produce(n);
-    return detail::parseOrSetError(std::forward<ParseFn>(parse_fn),
+    return detail::parseOrSetError(std::forward<ParseFnType>(parse_fn),
                                    std::forward<OnParseError>(on_parse_error));
 }
 

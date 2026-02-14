@@ -1,5 +1,7 @@
 # API 文档
 
+本文中的示例代码默认可配合模块化导入使用：`import galay.mysql;`（不支持模块时按需包含对应头文件，如 `galay-mysql/async/MysqlClient.h`）。
+
 ## Base 模块
 
 ### MysqlConfig

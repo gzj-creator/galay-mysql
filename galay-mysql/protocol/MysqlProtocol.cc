@@ -1,6 +1,7 @@
 #include "MysqlProtocol.h"
 #include <cstring>
 #include <algorithm>
+#include <concepts>
 
 namespace galay::mysql::protocol
 {
@@ -463,6 +464,14 @@ MysqlParser::parseStmtPrepareOk(const char* data, size_t len)
 namespace {
 
 template<typename ParamSpan>
+concept StmtExecuteParamSpan = requires(const ParamSpan& params, size_t i) {
+    { params.empty() } -> std::convertible_to<bool>;
+    { params.size() } -> std::convertible_to<size_t>;
+    { params[i].has_value() } -> std::convertible_to<bool>;
+    { *params[i] } -> std::convertible_to<std::string_view>;
+};
+
+template<StmtExecuteParamSpan ParamSpan>
 std::string encodeStmtExecuteImpl(uint32_t stmt_id,
                                   ParamSpan params,
                                   std::span<const uint8_t> param_types,

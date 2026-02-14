@@ -28,6 +28,38 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
+常用开关：
+
+- `-DGALAY_MYSQL_BUILD_TESTS=ON/OFF`
+- `-DGALAY_MYSQL_BUILD_EXAMPLES=ON/OFF`
+- `-DGALAY_MYSQL_BUILD_SHARED_LIBS=ON/OFF`
+- `-DGALAY_MYSQL_ENABLE_IMPORT_COMPILATION=ON/OFF`
+- `-DGALAY_MYSQL_BUILD_MODULE_EXAMPLES=ON/OFF`
+
+> import 编译当前仅在 `Linux + CMake >= 3.28 + Ninja/Visual Studio + GCC >= 14` 自动开启；不满足条件会自动降级为关闭。
+> 兼容旧开关 `GALAY_MYSQL_BUILD_IMPORT_EXAMPLES`，但已废弃，建议切换为 `GALAY_MYSQL_BUILD_MODULE_EXAMPLES`。
+> Clang 模块链路会检测 `clang-scan-deps`，当前项目默认仍关闭 Clang import 编译路径。
+
+## Include / Import
+
+传统包含方式：
+
+```cpp
+#include "galay-mysql/async/MysqlClient.h"
+#include "galay-mysql/sync/MysqlSession.h"
+```
+
+支持模块的编译器可使用：
+
+```cpp
+import galay.mysql;
+```
+
+模块接口文件约定：
+
+- `galay-mysql/module/galay.mysql.cppm`
+- 统一使用 `.cppm` 后缀
+
 ## 异步快速示例
 
 ```cpp
@@ -38,7 +70,12 @@ cmake --build build -j
 #include <optional>
 #include <thread>
 #include <galay-kernel/kernel/Runtime.h>
+
+#if defined(__cpp_modules) && __cpp_modules >= 201907L
+import galay.mysql;
+#else
 #include "galay-mysql/async/MysqlClient.h"
+#endif
 
 using namespace galay::kernel;
 using namespace galay::mysql;
@@ -106,7 +143,12 @@ int main() {
 
 ```cpp
 #include <iostream>
+
+#if defined(__cpp_modules) && __cpp_modules >= 201907L
+import galay.mysql;
+#else
 #include "galay-mysql/sync/MysqlSession.h"
+#endif
 
 using namespace galay::mysql;
 
@@ -163,6 +205,35 @@ GALAY_MYSQL_USER=root \
 GALAY_MYSQL_PASSWORD=password \
 GALAY_MYSQL_DB=test \
 ./build/test/T3-AsyncMysqlClient
+```
+
+## 示例目录
+
+项目新增 `example/`，每个功能都提供 include/import 两套示例：
+
+- `E1` 异步查询
+- `E2` 同步查询
+- `E3` 异步连接池
+- `E4` 同步预处理 + 事务
+
+构建并运行 include 版本：
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGALAY_MYSQL_BUILD_EXAMPLES=ON
+cmake --build build -j
+./build/example/E1-AsyncQuery-Include
+./build/example/E2-SyncQuery-Include
+```
+
+尝试构建 import 版本（支持时）：
+
+```bash
+cmake -S . -B build-import \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DGALAY_MYSQL_BUILD_EXAMPLES=ON \
+  -DGALAY_MYSQL_ENABLE_IMPORT_COMPILATION=ON \
+  -DGALAY_MYSQL_BUILD_MODULE_EXAMPLES=ON
+cmake --build build-import -j
 ```
 
 ## 文档
