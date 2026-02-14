@@ -1,0 +1,179 @@
+#include "MysqlConnectionPool.h"
+
+namespace galay::mysql
+{
+
+// ======================== MysqlConnectionPool ========================
+
+MysqlConnectionPool::MysqlConnectionPool(galay::kernel::IOScheduler* scheduler,
+                                         const MysqlConfig& config,
+                                         const AsyncMysqlConfig& async_config,
+                                         size_t min_connections,
+                                         size_t max_connections)
+    : m_scheduler(scheduler)
+    , m_config(config)
+    , m_async_config(async_config)
+    , m_min_connections(min_connections)
+    , m_max_connections(max_connections)
+{
+}
+
+MysqlConnectionPool::~MysqlConnectionPool()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    while (!m_idle_clients.empty()) {
+        m_idle_clients.pop();
+    }
+    m_all_clients.clear();
+}
+
+MysqlClient* MysqlConnectionPool::tryAcquire()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_idle_clients.empty()) {
+        auto* client = m_idle_clients.front();
+        m_idle_clients.pop();
+        return client;
+    }
+    return nullptr;
+}
+
+MysqlClient* MysqlConnectionPool::createClient()
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_total_connections.load(std::memory_order_relaxed) >= m_max_connections) {
+        return nullptr;
+    }
+    auto client = std::make_unique<MysqlClient>(m_scheduler, m_async_config);
+    auto* ptr = client.get();
+    m_all_clients.push_back(std::move(client));
+    m_total_connections.fetch_add(1, std::memory_order_relaxed);
+    return ptr;
+}
+
+void MysqlConnectionPool::release(MysqlClient* client)
+{
+    if (!client) return;
+
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_waiters.empty()) {
+        auto waiter = m_waiters.front();
+        m_waiters.pop();
+        m_idle_clients.push(client);
+        waiter.resume();
+    } else {
+        m_idle_clients.push(client);
+    }
+}
+
+size_t MysqlConnectionPool::idleCount() const
+{
+    // 注意：这不是线程安全的精确值，仅供参考
+    return m_idle_clients.size();
+}
+
+MysqlConnectionPool::AcquireAwaitable& MysqlConnectionPool::acquire()
+{
+    if (!m_acquire_awaitable.has_value() || m_acquire_awaitable->isInvalid()) {
+        m_acquire_awaitable.emplace(*this);
+    }
+    return *m_acquire_awaitable;
+}
+
+// ======================== AcquireAwaitable ========================
+
+MysqlConnectionPool::AcquireAwaitable::AcquireAwaitable(MysqlConnectionPool& pool)
+    : m_pool(pool)
+    , m_state(State::Invalid)
+{
+}
+
+bool MysqlConnectionPool::AcquireAwaitable::await_ready() const noexcept
+{
+    return false;
+}
+
+bool MysqlConnectionPool::AcquireAwaitable::await_suspend(std::coroutine_handle<> handle)
+{
+    if (m_state == State::Invalid) {
+        // 尝试获取空闲连接
+        m_client = m_pool.tryAcquire();
+        if (m_client) {
+            m_state = State::Ready;
+            m_connect_awaitable = nullptr;
+            return false; // 不挂起，立即返回
+        }
+
+        // 尝试创建新连接
+        m_client = m_pool.createClient();
+        if (m_client) {
+            m_state = State::Creating;
+            m_connect_awaitable = &m_client->connect(m_pool.m_config);
+            return m_connect_awaitable->await_suspend(handle);
+        }
+
+        // 池已满，等待连接释放
+        m_state = State::Waiting;
+        m_connect_awaitable = nullptr;
+        std::lock_guard<std::mutex> lock(m_pool.m_mutex);
+        m_pool.m_waiters.push(handle);
+        return true;
+    }
+    else if (m_state == State::Creating) {
+        // 继续连接流程
+        if (!m_connect_awaitable) {
+            m_state = State::Invalid;
+            return false;
+        }
+        return m_connect_awaitable->await_suspend(handle);
+    }
+
+    return false;
+}
+
+std::expected<std::optional<MysqlClient*>, MysqlError>
+MysqlConnectionPool::AcquireAwaitable::await_resume()
+{
+    if (m_state == State::Ready) {
+        m_state = State::Invalid;
+        m_connect_awaitable = nullptr;
+        return m_client;
+    }
+    else if (m_state == State::Creating) {
+        if (!m_connect_awaitable) {
+            m_state = State::Invalid;
+            return std::unexpected(MysqlError(MYSQL_ERROR_INTERNAL, "Missing connect awaitable in creating state"));
+        }
+
+        auto result = m_connect_awaitable->await_resume();
+        if (!result) {
+            m_state = State::Invalid;
+            m_connect_awaitable = nullptr;
+            return std::unexpected(result.error());
+        }
+        if (result->has_value()) {
+            // 连接完成
+            m_state = State::Invalid;
+            m_connect_awaitable = nullptr;
+            return m_client;
+        }
+        // 连接未完成，保持Creating状态继续
+        return std::nullopt;
+    }
+    else if (m_state == State::Waiting) {
+        // 被唤醒后，从池中获取连接
+        m_client = m_pool.tryAcquire();
+        m_state = State::Invalid;
+        m_connect_awaitable = nullptr;
+        if (m_client) {
+            return m_client;
+        }
+        return std::unexpected(MysqlError(MYSQL_ERROR_INTERNAL, "Failed to acquire connection after wakeup"));
+    }
+
+    m_state = State::Invalid;
+    m_connect_awaitable = nullptr;
+    return std::unexpected(MysqlError(MYSQL_ERROR_INTERNAL, "Invalid acquire state"));
+}
+
+} // namespace galay::mysql

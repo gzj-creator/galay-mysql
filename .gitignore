@@ -1,0 +1,56 @@
+# macOS
+.DS_Store
+
+# Local tooling
+.claude/
+.vscode/
+.cache/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build directories
+build/
+build-*/
+cmake-build-*/
+out/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+CTestTestfile.cmake
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+
+# Binary / intermediate artifacts
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.lib
+*.exe
+*.out
+*.i
+*.ii
+*.s
+*.d
+
+# Coverage / profiling
+*.gcno
+*.gcda
+*.gcov
+*.profraw
+*.profdata
+
+# Runtime / test outputs
+*.log
+*.pid
+*.tmp
+*.result
