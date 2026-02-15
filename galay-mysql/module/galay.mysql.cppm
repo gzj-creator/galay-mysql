@@ -1,3 +1,7 @@
+module;
+
+#include "galay-mysql/module/ModulePrelude.hpp"
+
 export module galay.mysql;
 
 export {

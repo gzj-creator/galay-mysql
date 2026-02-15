@@ -38,7 +38,7 @@ cmake --build build -j
 
 > import 编译当前仅在 `Linux + CMake >= 3.28 + Ninja/Visual Studio + GCC >= 14` 自动开启；不满足条件会自动降级为关闭。
 > 兼容旧开关 `GALAY_MYSQL_BUILD_IMPORT_EXAMPLES`，但已废弃，建议切换为 `GALAY_MYSQL_BUILD_MODULE_EXAMPLES`。
-> Clang 模块链路会检测 `clang-scan-deps`，当前项目默认仍关闭 Clang import 编译路径。
+> Clang 模块链路会自动检测 `clang-scan-deps`；满足条件时可启用 import 编译路径，不满足条件会自动降级关闭。
 
 ## Include / Import
 
@@ -59,6 +59,26 @@ import galay.mysql;
 
 - `galay-mysql/module/galay.mysql.cppm`
 - 统一使用 `.cppm` 后缀
+
+### 模块支持更新（2026-02）
+
+本次模块接口统一为：
+
+- `module;`
+- `#include "galay-mysql/module/ModulePrelude.hpp"`
+- `export module galay.mysql;`
+- `export { #include ... }`
+
+新增预导入头文件：`galay-mysql/module/ModulePrelude.hpp`。  
+推荐使用 CMake `>= 3.28` + `Ninja`/`Visual Studio` + 可用 `clang-scan-deps`（Clang）。
+
+示例（Clang 20）：
+
+```bash
+cmake -S . -B build-mod -G Ninja \
+  -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@20/bin/clang++
+cmake --build build-mod --target galay-mysql -j
+```
 
 ## 异步快速示例
 
