@@ -1,4 +1,4 @@
-#include "MysqlClient.h"
+#include "AsyncMysqlClient.h"
 #include "galay-mysql/base/MysqlLog.h"
 #include <concepts>
 #include <utility>
@@ -393,7 +393,7 @@ bool MysqlConnectAwaitable::ProtocolAuthResultRecvAwaitable::handleComplete(GHan
 }
 #endif
 
-MysqlConnectAwaitable::MysqlConnectAwaitable(MysqlClient& client, MysqlConfig config)
+MysqlConnectAwaitable::MysqlConnectAwaitable(AsyncMysqlClient& client, MysqlConfig config)
     : CustomAwaitable(client.m_socket.controller())
     , m_client(client)
     , m_config(std::move(config))
@@ -745,7 +745,7 @@ bool MysqlQueryAwaitable::ProtocolRecvAwaitable::handleComplete(GHandle handle)
 }
 #endif
 
-MysqlQueryAwaitable::MysqlQueryAwaitable(MysqlClient& client, std::string_view sql)
+MysqlQueryAwaitable::MysqlQueryAwaitable(AsyncMysqlClient& client, std::string_view sql)
     : CustomAwaitable(client.m_socket.controller())
     , m_client(client)
     , m_encoded_cmd(m_client.m_encoder.encodeQuery(sql, 0))
@@ -1120,7 +1120,7 @@ bool MysqlPrepareAwaitable::ProtocolRecvAwaitable::handleComplete(GHandle handle
 }
 #endif
 
-MysqlPrepareAwaitable::MysqlPrepareAwaitable(MysqlClient& client, std::string_view sql)
+MysqlPrepareAwaitable::MysqlPrepareAwaitable(AsyncMysqlClient& client, std::string_view sql)
     : CustomAwaitable(client.m_socket.controller())
     , m_client(client)
     , m_encoded_cmd(m_client.m_encoder.encodeStmtPrepare(sql, 0))
@@ -1469,7 +1469,7 @@ bool MysqlStmtExecuteAwaitable::ProtocolRecvAwaitable::handleComplete(GHandle ha
 }
 #endif
 
-MysqlStmtExecuteAwaitable::MysqlStmtExecuteAwaitable(MysqlClient& client, std::string encoded_cmd)
+MysqlStmtExecuteAwaitable::MysqlStmtExecuteAwaitable(AsyncMysqlClient& client, std::string encoded_cmd)
     : CustomAwaitable(client.m_socket.controller())
     , m_client(client)
     , m_encoded_cmd(std::move(encoded_cmd))
@@ -1674,9 +1674,9 @@ std::expected<std::optional<MysqlResultSet>, MysqlError> MysqlStmtExecuteAwaitab
     return std::optional<MysqlResultSet>(std::move(result));
 }
 
-// ======================== MysqlClient 实现 ========================
+// ======================== AsyncMysqlClient 实现 ========================
 
-MysqlClient::MysqlClient(IOScheduler* scheduler, AsyncMysqlConfig config)
+AsyncMysqlClient::AsyncMysqlClient(IOScheduler* scheduler, AsyncMysqlConfig config)
     : m_scheduler(scheduler)
     , m_config(std::move(config))
     , m_ring_buffer(m_config.buffer_size)
@@ -1691,7 +1691,7 @@ MysqlClient::MysqlClient(IOScheduler* scheduler, AsyncMysqlConfig config)
     }
 }
 
-MysqlClient::MysqlClient(MysqlClient&& other) noexcept
+AsyncMysqlClient::AsyncMysqlClient(AsyncMysqlClient&& other) noexcept
     : m_is_closed(other.m_is_closed)
     , m_socket(std::move(other.m_socket))
     , m_scheduler(other.m_scheduler)
@@ -1705,7 +1705,7 @@ MysqlClient::MysqlClient(MysqlClient&& other) noexcept
     other.m_is_closed = true;
 }
 
-MysqlClient& MysqlClient::operator=(MysqlClient&& other) noexcept
+AsyncMysqlClient& AsyncMysqlClient::operator=(AsyncMysqlClient&& other) noexcept
 {
     if (this != &other) {
         m_is_closed = other.m_is_closed;
@@ -1726,7 +1726,7 @@ MysqlClient& MysqlClient::operator=(MysqlClient&& other) noexcept
     return *this;
 }
 
-MysqlConnectAwaitable& MysqlClient::connect(MysqlConfig config)
+MysqlConnectAwaitable& AsyncMysqlClient::connect(MysqlConfig config)
 {
     if (!m_connect_awaitable.has_value() || m_connect_awaitable->isInvalid()) {
         m_connect_awaitable.emplace(*this, std::move(config));
@@ -1734,7 +1734,7 @@ MysqlConnectAwaitable& MysqlClient::connect(MysqlConfig config)
     return *m_connect_awaitable;
 }
 
-MysqlConnectAwaitable& MysqlClient::connect(std::string_view host, uint16_t port,
+MysqlConnectAwaitable& AsyncMysqlClient::connect(std::string_view host, uint16_t port,
                                               std::string_view user, std::string_view password,
                                               std::string_view database)
 {
@@ -1747,7 +1747,7 @@ MysqlConnectAwaitable& MysqlClient::connect(std::string_view host, uint16_t port
     return connect(std::move(config));
 }
 
-MysqlQueryAwaitable& MysqlClient::query(std::string_view sql)
+MysqlQueryAwaitable& AsyncMysqlClient::query(std::string_view sql)
 {
     if (!m_query_awaitable.has_value() || m_query_awaitable->isInvalid()) {
         m_query_awaitable.emplace(*this, sql);
@@ -1755,7 +1755,7 @@ MysqlQueryAwaitable& MysqlClient::query(std::string_view sql)
     return *m_query_awaitable;
 }
 
-MysqlPrepareAwaitable& MysqlClient::prepare(std::string_view sql)
+MysqlPrepareAwaitable& AsyncMysqlClient::prepare(std::string_view sql)
 {
     if (!m_prepare_awaitable.has_value() || m_prepare_awaitable->isInvalid()) {
         m_prepare_awaitable.emplace(*this, sql);
@@ -1763,7 +1763,7 @@ MysqlPrepareAwaitable& MysqlClient::prepare(std::string_view sql)
     return *m_prepare_awaitable;
 }
 
-MysqlStmtExecuteAwaitable& MysqlClient::stmtExecute(uint32_t stmt_id,
+MysqlStmtExecuteAwaitable& AsyncMysqlClient::stmtExecute(uint32_t stmt_id,
                                                        std::span<const std::optional<std::string>> params,
                                                        std::span<const uint8_t> param_types)
 {
@@ -1773,7 +1773,7 @@ MysqlStmtExecuteAwaitable& MysqlClient::stmtExecute(uint32_t stmt_id,
     return *m_stmt_execute_awaitable;
 }
 
-MysqlStmtExecuteAwaitable& MysqlClient::stmtExecute(uint32_t stmt_id,
+MysqlStmtExecuteAwaitable& AsyncMysqlClient::stmtExecute(uint32_t stmt_id,
                                                        std::span<const std::optional<std::string_view>> params,
                                                        std::span<const uint8_t> param_types)
 {
@@ -1783,27 +1783,27 @@ MysqlStmtExecuteAwaitable& MysqlClient::stmtExecute(uint32_t stmt_id,
     return *m_stmt_execute_awaitable;
 }
 
-MysqlQueryAwaitable& MysqlClient::beginTransaction()
+MysqlQueryAwaitable& AsyncMysqlClient::beginTransaction()
 {
     return query("BEGIN");
 }
 
-MysqlQueryAwaitable& MysqlClient::commit()
+MysqlQueryAwaitable& AsyncMysqlClient::commit()
 {
     return query("COMMIT");
 }
 
-MysqlQueryAwaitable& MysqlClient::rollback()
+MysqlQueryAwaitable& AsyncMysqlClient::rollback()
 {
     return query("ROLLBACK");
 }
 
-MysqlQueryAwaitable& MysqlClient::ping()
+MysqlQueryAwaitable& AsyncMysqlClient::ping()
 {
     return query("SELECT 1");
 }
 
-MysqlQueryAwaitable& MysqlClient::useDatabase(std::string_view database)
+MysqlQueryAwaitable& AsyncMysqlClient::useDatabase(std::string_view database)
 {
     std::string sql;
     sql.reserve(4 + database.size());

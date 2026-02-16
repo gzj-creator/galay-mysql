@@ -27,7 +27,7 @@ MysqlConnectionPool::~MysqlConnectionPool()
     m_all_clients.clear();
 }
 
-MysqlClient* MysqlConnectionPool::tryAcquire()
+AsyncMysqlClient* MysqlConnectionPool::tryAcquire()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     if (!m_idle_clients.empty()) {
@@ -38,20 +38,20 @@ MysqlClient* MysqlConnectionPool::tryAcquire()
     return nullptr;
 }
 
-MysqlClient* MysqlConnectionPool::createClient()
+AsyncMysqlClient* MysqlConnectionPool::createClient()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     if (m_total_connections.load(std::memory_order_relaxed) >= m_max_connections) {
         return nullptr;
     }
-    auto client = std::make_unique<MysqlClient>(m_scheduler, m_async_config);
+    auto client = std::make_unique<AsyncMysqlClient>(m_scheduler, m_async_config);
     auto* ptr = client.get();
     m_all_clients.push_back(std::move(client));
     m_total_connections.fetch_add(1, std::memory_order_relaxed);
     return ptr;
 }
 
-void MysqlConnectionPool::release(MysqlClient* client)
+void MysqlConnectionPool::release(AsyncMysqlClient* client)
 {
     if (!client) return;
 
@@ -131,7 +131,7 @@ bool MysqlConnectionPool::AcquireAwaitable::await_suspend(std::coroutine_handle<
     return false;
 }
 
-std::expected<std::optional<MysqlClient*>, MysqlError>
+std::expected<std::optional<AsyncMysqlClient*>, MysqlError>
 MysqlConnectionPool::AcquireAwaitable::await_resume()
 {
     if (m_state == State::Ready) {

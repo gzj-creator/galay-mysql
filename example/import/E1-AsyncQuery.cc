@@ -24,7 +24,7 @@ struct AsyncState {
 
 Coroutine run(IOScheduler* scheduler, AsyncState* state, const mysql_example::MysqlExampleConfig& cfg)
 {
-    MysqlClient client(scheduler);
+    AsyncMysqlClient client(scheduler);
 
     auto& conn_aw = client.connect(cfg.host, cfg.port, cfg.user, cfg.password, cfg.database);
     std::expected<std::optional<bool>, MysqlError> conn_result;

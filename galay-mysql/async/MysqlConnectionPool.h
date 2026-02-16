@@ -1,7 +1,7 @@
 #ifndef GALAY_MYSQL_CONNECTION_POOL_H
 #define GALAY_MYSQL_CONNECTION_POOL_H
 
-#include "MysqlClient.h"
+#include "AsyncMysqlClient.h"
 #include "galay-mysql/base/MysqlConfig.h"
 #include <galay-kernel/kernel/IOScheduler.hpp>
 #include <galay-kernel/kernel/Coroutine.h>
@@ -18,7 +18,7 @@ namespace galay::mysql
 
 /**
  * @brief 异步MySQL连接池
- * @details 管理多个MysqlClient连接，支持异步获取和归还
+ * @details 管理多个AsyncMysqlClient连接，支持异步获取和归还
  */
 class MysqlConnectionPool
 {
@@ -45,7 +45,7 @@ public:
 
         bool await_ready() const noexcept;
         bool await_suspend(std::coroutine_handle<> handle);
-        std::expected<std::optional<MysqlClient*>, MysqlError> await_resume();
+        std::expected<std::optional<AsyncMysqlClient*>, MysqlError> await_resume();
 
         bool isInvalid() const { return m_state == State::Invalid; }
 
@@ -59,7 +59,7 @@ public:
 
         MysqlConnectionPool& m_pool;
         State m_state;
-        MysqlClient* m_client = nullptr;
+        AsyncMysqlClient* m_client = nullptr;
         MysqlConnectAwaitable* m_connect_awaitable = nullptr;
     };
 
@@ -71,7 +71,7 @@ public:
     /**
      * @brief 归还连接到池中
      */
-    void release(MysqlClient* client);
+    void release(AsyncMysqlClient* client);
 
     /**
      * @brief 获取当前池中连接数
@@ -86,8 +86,8 @@ public:
 private:
     friend class AcquireAwaitable;
 
-    MysqlClient* tryAcquire();
-    MysqlClient* createClient();
+    AsyncMysqlClient* tryAcquire();
+    AsyncMysqlClient* createClient();
 
     galay::kernel::IOScheduler* m_scheduler;
     MysqlConfig m_config;
@@ -96,8 +96,8 @@ private:
     size_t m_max_connections;
 
     std::mutex m_mutex;
-    std::queue<MysqlClient*> m_idle_clients;
-    std::vector<std::unique_ptr<MysqlClient>> m_all_clients;
+    std::queue<AsyncMysqlClient*> m_idle_clients;
+    std::vector<std::unique_ptr<AsyncMysqlClient>> m_all_clients;
     std::queue<std::coroutine_handle<>> m_waiters;
     std::atomic<size_t> m_total_connections{0};
 

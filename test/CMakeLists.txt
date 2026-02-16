@@ -15,7 +15,7 @@ add_mysql_test(T2-MysqlAuth T2-MysqlAuth.cc)
 add_mysql_test(T3-AsyncMysqlClient T3-AsyncMysqlClient.cc)
 
 # T4 - 同步客户端测试
-add_mysql_test(T4-SyncMysqlSession T4-SyncMysqlSession.cc)
+add_mysql_test(T4-SyncMysqlClient T4-SyncMysqlClient.cc)
 
 # T5 - 连接池测试
 add_mysql_test(T5-ConnectionPool T5-ConnectionPool.cc)

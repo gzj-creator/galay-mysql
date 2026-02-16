@@ -2,7 +2,7 @@
 #include <optional>
 #include <vector>
 #include "example/common/ExampleConfig.h"
-#include "galay-mysql/sync/MysqlSession.h"
+#include "galay-mysql/sync/MysqlClient.h"
 
 using namespace galay::mysql;
 
@@ -11,7 +11,7 @@ int main()
     const auto cfg = mysql_example::loadMysqlExampleConfig();
     mysql_example::printMysqlExampleConfig(cfg);
 
-    MysqlSession session;
+    MysqlClient session;
     auto conn = session.connect(cfg.host, cfg.port, cfg.user, cfg.password, cfg.database);
     if (!conn) {
         std::cerr << "connect failed: " << conn.error().message() << std::endl;

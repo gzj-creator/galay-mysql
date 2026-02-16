@@ -1,13 +1,13 @@
-#include "MysqlSession.h"
+#include "MysqlClient.h"
 #include <cstring>
 
 namespace galay::mysql
 {
 
-MysqlSession::MysqlSession() = default;
-MysqlSession::~MysqlSession() { close(); }
+MysqlClient::MysqlClient() = default;
+MysqlClient::~MysqlClient() { close(); }
 
-MysqlSession::MysqlSession(MysqlSession&& other) noexcept
+MysqlClient::MysqlClient(MysqlClient&& other) noexcept
     : m_connection(std::move(other.m_connection))
     , m_parser(std::move(other.m_parser))
     , m_encoder(std::move(other.m_encoder))
@@ -16,7 +16,7 @@ MysqlSession::MysqlSession(MysqlSession&& other) noexcept
     other.m_server_capabilities = 0;
 }
 
-MysqlSession& MysqlSession::operator=(MysqlSession&& other) noexcept
+MysqlClient& MysqlClient::operator=(MysqlClient&& other) noexcept
 {
     if (this != &other) {
         close();
@@ -29,7 +29,7 @@ MysqlSession& MysqlSession::operator=(MysqlSession&& other) noexcept
     return *this;
 }
 
-MysqlVoidResult MysqlSession::connect(const MysqlConfig& config)
+MysqlVoidResult MysqlClient::connect(const MysqlConfig& config)
 {
     // TCP连接
     auto conn_result = m_connection.connect(config.host, config.port, config.connect_timeout_ms);
@@ -117,14 +117,14 @@ MysqlVoidResult MysqlSession::connect(const MysqlConfig& config)
     return std::unexpected(MysqlError(MYSQL_ERROR_AUTH, "Unexpected auth response"));
 }
 
-MysqlVoidResult MysqlSession::connect(const std::string& host, uint16_t port,
+MysqlVoidResult MysqlClient::connect(const std::string& host, uint16_t port,
                                        const std::string& user, const std::string& password,
                                        const std::string& database)
 {
     return connect(MysqlConfig::create(host, port, user, password, database));
 }
 
-MysqlResult MysqlSession::query(const std::string& sql)
+MysqlResult MysqlClient::query(const std::string& sql)
 {
     auto cmd = m_encoder.encodeQuery(sql, 0);
     auto send_result = m_connection.send(cmd);
@@ -132,7 +132,7 @@ MysqlResult MysqlSession::query(const std::string& sql)
     return receiveResultSet();
 }
 
-MysqlResult MysqlSession::receiveResultSet()
+MysqlResult MysqlClient::receiveResultSet()
 {
     auto pkt_result = m_connection.recvPacket();
     if (!pkt_result) return std::unexpected(pkt_result.error());
@@ -224,7 +224,7 @@ MysqlResult MysqlSession::receiveResultSet()
     return rs;
 }
 
-std::expected<MysqlSession::PrepareResult, MysqlError> MysqlSession::prepare(const std::string& sql)
+std::expected<MysqlClient::PrepareResult, MysqlError> MysqlClient::prepare(const std::string& sql)
 {
     auto cmd = m_encoder.encodeStmtPrepare(sql, 0);
     auto send_result = m_connection.send(cmd);
@@ -266,7 +266,7 @@ std::expected<MysqlSession::PrepareResult, MysqlError> MysqlSession::prepare(con
     return PrepareResult{ok->statement_id, ok->num_columns, ok->num_params};
 }
 
-MysqlResult MysqlSession::stmtExecute(uint32_t stmt_id,
+MysqlResult MysqlClient::stmtExecute(uint32_t stmt_id,
                                        const std::vector<std::optional<std::string>>& params,
                                        const std::vector<uint8_t>& param_types)
 {
@@ -276,7 +276,7 @@ MysqlResult MysqlSession::stmtExecute(uint32_t stmt_id,
     return receiveResultSet();
 }
 
-MysqlVoidResult MysqlSession::stmtClose(uint32_t stmt_id)
+MysqlVoidResult MysqlClient::stmtClose(uint32_t stmt_id)
 {
     auto cmd = m_encoder.encodeStmtClose(stmt_id, 0);
     auto send_result = m_connection.send(cmd);
@@ -284,20 +284,20 @@ MysqlVoidResult MysqlSession::stmtClose(uint32_t stmt_id)
     return {};
 }
 
-MysqlVoidResult MysqlSession::executeSimple(const std::string& sql)
+MysqlVoidResult MysqlClient::executeSimple(const std::string& sql)
 {
     auto result = query(sql);
     if (!result) return std::unexpected(result.error());
     return {};
 }
 
-MysqlVoidResult MysqlSession::beginTransaction() { return executeSimple("BEGIN"); }
-MysqlVoidResult MysqlSession::commit() { return executeSimple("COMMIT"); }
-MysqlVoidResult MysqlSession::rollback() { return executeSimple("ROLLBACK"); }
-MysqlVoidResult MysqlSession::ping() { return executeSimple("SELECT 1"); }
-MysqlVoidResult MysqlSession::useDatabase(const std::string& database) { return executeSimple("USE " + database); }
+MysqlVoidResult MysqlClient::beginTransaction() { return executeSimple("BEGIN"); }
+MysqlVoidResult MysqlClient::commit() { return executeSimple("COMMIT"); }
+MysqlVoidResult MysqlClient::rollback() { return executeSimple("ROLLBACK"); }
+MysqlVoidResult MysqlClient::ping() { return executeSimple("SELECT 1"); }
+MysqlVoidResult MysqlClient::useDatabase(const std::string& database) { return executeSimple("USE " + database); }
 
-void MysqlSession::close()
+void MysqlClient::close()
 {
     if (m_connection.isConnected()) {
         auto quit = m_encoder.encodeQuit(0);

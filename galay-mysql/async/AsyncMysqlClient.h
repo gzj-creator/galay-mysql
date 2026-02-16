@@ -1,5 +1,5 @@
-#ifndef GALAY_MYSQL_CLIENT_H
-#define GALAY_MYSQL_CLIENT_H
+#ifndef GALAY_MYSQL_ASYNC_CLIENT_H
+#define GALAY_MYSQL_ASYNC_CLIENT_H
 
 #include <galay-kernel/async/TcpSocket.h>
 #include <galay-kernel/kernel/IOScheduler.hpp>
@@ -47,7 +47,7 @@ using MysqlResult = std::expected<MysqlResultSet, MysqlError>;
 using MysqlVoidResult = std::expected<void, MysqlError>;
 
 // 前向声明
-class MysqlClient;
+class AsyncMysqlClient;
 
 // ======================== MysqlConnectAwaitable ========================
 
@@ -118,7 +118,7 @@ public:
         MysqlConnectAwaitable* m_owner;
     };
 
-    MysqlConnectAwaitable(MysqlClient& client, MysqlConfig config);
+    MysqlConnectAwaitable(AsyncMysqlClient& client, MysqlConfig config);
 
     bool await_ready() const noexcept { return false; }
     using CustomAwaitable::await_suspend;
@@ -141,7 +141,7 @@ private:
     std::expected<bool, MysqlError> parseHandshakeFromRingBuffer();
     std::expected<bool, MysqlError> parseAuthResultFromRingBuffer();
 
-    MysqlClient& m_client;
+    AsyncMysqlClient& m_client;
     MysqlConfig m_config;
     Lifecycle m_lifecycle;
 
@@ -205,7 +205,7 @@ public:
         MysqlQueryAwaitable* m_owner;
     };
 
-    MysqlQueryAwaitable(MysqlClient& client, std::string_view sql);
+    MysqlQueryAwaitable(AsyncMysqlClient& client, std::string_view sql);
 
     bool await_ready() const noexcept { return false; }
     using CustomAwaitable::await_suspend;
@@ -233,7 +233,7 @@ private:
     void setRecvError(const IOError& io_error) noexcept;
     std::expected<bool, MysqlError> tryParseFromRingBuffer();
 
-    MysqlClient& m_client;
+    AsyncMysqlClient& m_client;
     std::string m_encoded_cmd;
     Lifecycle m_lifecycle;
     State m_state;
@@ -310,7 +310,7 @@ public:
         MysqlPrepareAwaitable* m_owner;
     };
 
-    MysqlPrepareAwaitable(MysqlClient& client, std::string_view sql);
+    MysqlPrepareAwaitable(AsyncMysqlClient& client, std::string_view sql);
 
     bool await_ready() const noexcept { return false; }
     using CustomAwaitable::await_suspend;
@@ -339,7 +339,7 @@ private:
     void setRecvError(const IOError& io_error) noexcept;
     std::expected<bool, MysqlError> tryParseFromRingBuffer();
 
-    MysqlClient& m_client;
+    AsyncMysqlClient& m_client;
     std::string m_encoded_cmd;
     Lifecycle m_lifecycle;
     State m_state;
@@ -403,7 +403,7 @@ public:
         MysqlStmtExecuteAwaitable* m_owner;
     };
 
-    MysqlStmtExecuteAwaitable(MysqlClient& client, std::string encoded_cmd);
+    MysqlStmtExecuteAwaitable(AsyncMysqlClient& client, std::string encoded_cmd);
 
     bool await_ready() const noexcept { return false; }
     using CustomAwaitable::await_suspend;
@@ -431,7 +431,7 @@ private:
     void setRecvError(const IOError& io_error) noexcept;
     std::expected<bool, MysqlError> tryParseFromRingBuffer();
 
-    MysqlClient& m_client;
+    AsyncMysqlClient& m_client;
     std::string m_encoded_cmd;
     Lifecycle m_lifecycle;
     State m_state;
@@ -449,7 +449,7 @@ public:
     std::expected<std::optional<MysqlResultSet>, galay::kernel::IOError> m_result;
 };
 
-// ======================== MysqlClient ========================
+// ======================== AsyncMysqlClient ========================
 
 /**
  * @brief 异步MySQL客户端
@@ -457,7 +457,7 @@ public:
  *
  * @code
  * Coroutine testMysql(IOScheduler* scheduler) {
- *     MysqlClient client(scheduler);
+ *     AsyncMysqlClient client(scheduler);
  *     auto config = MysqlConfig::create("127.0.0.1", 3306, "root", "password", "test_db");
  *     auto connect_result = co_await client.connect(config);
  *     if (!connect_result) { co_return; }
@@ -469,18 +469,18 @@ public:
  * }
  * @endcode
  */
-class MysqlClient
+class AsyncMysqlClient
 {
 public:
-    MysqlClient(IOScheduler* scheduler, AsyncMysqlConfig config = AsyncMysqlConfig::noTimeout());
+    AsyncMysqlClient(IOScheduler* scheduler, AsyncMysqlConfig config = AsyncMysqlConfig::noTimeout());
 
-    MysqlClient(MysqlClient&& other) noexcept;
-    MysqlClient& operator=(MysqlClient&& other) noexcept;
+    AsyncMysqlClient(AsyncMysqlClient&& other) noexcept;
+    AsyncMysqlClient& operator=(AsyncMysqlClient&& other) noexcept;
 
-    MysqlClient(const MysqlClient&) = delete;
-    MysqlClient& operator=(const MysqlClient&) = delete;
+    AsyncMysqlClient(const AsyncMysqlClient&) = delete;
+    AsyncMysqlClient& operator=(const AsyncMysqlClient&) = delete;
 
-    ~MysqlClient() = default;
+    ~AsyncMysqlClient() = default;
 
     // ======================== 连接 ========================
 
@@ -555,4 +555,4 @@ private:
 
 } // namespace galay::mysql
 
-#endif // GALAY_MYSQL_CLIENT_H
+#endif // GALAY_MYSQL_ASYNC_CLIENT_H

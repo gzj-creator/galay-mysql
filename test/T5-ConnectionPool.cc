@@ -32,10 +32,10 @@ Coroutine testConnectionPool(IOScheduler* scheduler, AsyncTestState* state, mysq
 
     // 获取连接 (需要循环，因为连接创建是多步的)
     std::cout << "Acquiring connection..." << std::endl;
-    MysqlClient* client = nullptr;
+    AsyncMysqlClient* client = nullptr;
     {
         auto& aw = pool.acquire();
-        std::expected<std::optional<MysqlClient*>, MysqlError> ar;
+        std::expected<std::optional<AsyncMysqlClient*>, MysqlError> ar;
         do {
             ar = co_await aw;
             if (!ar) {

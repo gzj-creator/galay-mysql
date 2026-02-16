@@ -1,16 +1,16 @@
 #include <iostream>
-#include "galay-mysql/sync/MysqlSession.h"
+#include "galay-mysql/sync/MysqlClient.h"
 #include "test/TestMysqlConfig.h"
 
 using namespace galay::mysql;
 
 int main()
 {
-    std::cout << "=== T4: Sync MySQL Session Tests ===" << std::endl;
+    std::cout << "=== T4: Sync MySQL Client Tests ===" << std::endl;
     const auto db_cfg = mysql_test::loadMysqlTestConfig();
     mysql_test::printMysqlTestConfig(db_cfg);
 
-    MysqlSession session;
+    MysqlClient session;
 
     // 连接
     std::cout << "Connecting to MySQL server..." << std::endl;

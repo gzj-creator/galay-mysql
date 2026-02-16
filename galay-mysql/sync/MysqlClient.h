@@ -1,5 +1,5 @@
-#ifndef GALAY_MYSQL_SESSION_H
-#define GALAY_MYSQL_SESSION_H
+#ifndef GALAY_MYSQL_SYNC_CLIENT_H
+#define GALAY_MYSQL_SYNC_CLIENT_H
 
 #include "galay-mysql/base/MysqlError.h"
 #include "galay-mysql/base/MysqlValue.h"
@@ -20,11 +20,11 @@ using MysqlResult = std::expected<MysqlResultSet, MysqlError>;
 using MysqlVoidResult = std::expected<void, MysqlError>;
 
 /**
- * @brief 同步MySQL会话
+ * @brief 同步MySQL客户端
  * @details 使用阻塞socket的同步MySQL客户端
  *
  * @code
- * MysqlSession session;
+ * MysqlClient session;
  * auto config = MysqlConfig::create("127.0.0.1", 3306, "root", "password", "test_db");
  * auto result = session.connect(config);
  * if (!result) { return; }
@@ -32,16 +32,16 @@ using MysqlVoidResult = std::expected<void, MysqlError>;
  * session.close();
  * @endcode
  */
-class MysqlSession
+class MysqlClient
 {
 public:
-    MysqlSession();
-    ~MysqlSession();
+    MysqlClient();
+    ~MysqlClient();
 
-    MysqlSession(const MysqlSession&) = delete;
-    MysqlSession& operator=(const MysqlSession&) = delete;
-    MysqlSession(MysqlSession&& other) noexcept;
-    MysqlSession& operator=(MysqlSession&& other) noexcept;
+    MysqlClient(const MysqlClient&) = delete;
+    MysqlClient& operator=(const MysqlClient&) = delete;
+    MysqlClient(MysqlClient&& other) noexcept;
+    MysqlClient& operator=(MysqlClient&& other) noexcept;
 
     // ======================== 连接 ========================
 
@@ -103,4 +103,4 @@ private:
 
 } // namespace galay::mysql
 
-#endif // GALAY_MYSQL_SESSION_H
+#endif // GALAY_MYSQL_SYNC_CLIENT_H

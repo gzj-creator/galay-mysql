@@ -1,7 +1,7 @@
 #include <iostream>
 #include <atomic>
 #include <galay-kernel/kernel/Runtime.h>
-#include "galay-mysql/async/MysqlClient.h"
+#include "galay-mysql/async/AsyncMysqlClient.h"
 #include "test/TestMysqlConfig.h"
 
 using namespace galay::kernel;
@@ -71,7 +71,7 @@ Coroutine testPreparedStatement(IOScheduler* scheduler, AsyncTestState* state, m
 {
     std::cout << "Testing MySQL prepared statements..." << std::endl;
 
-    MysqlClient client(scheduler);
+    AsyncMysqlClient client(scheduler);
 
     MYSQL_CO_CONNECT(client, db_cfg.host, db_cfg.port, db_cfg.user, db_cfg.password, db_cfg.database);
     std::cout << "Connected." << std::endl;

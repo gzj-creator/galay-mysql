@@ -45,8 +45,8 @@ cmake --build build -j
 传统包含方式：
 
 ```cpp
-#include "galay-mysql/async/MysqlClient.h"
-#include "galay-mysql/sync/MysqlSession.h"
+#include "galay-mysql/async/AsyncMysqlClient.h"
+#include "galay-mysql/sync/MysqlClient.h"
 ```
 
 支持模块的编译器可使用：
@@ -94,7 +94,7 @@ cmake --build build-mod --target galay-mysql -j
 #if defined(__cpp_modules) && __cpp_modules >= 201907L
 import galay.mysql;
 #else
-#include "galay-mysql/async/MysqlClient.h"
+#include "galay-mysql/async/AsyncMysqlClient.h"
 #endif
 
 using namespace galay::kernel;
@@ -105,7 +105,7 @@ struct RunState {
 };
 
 Coroutine run(IOScheduler* scheduler, RunState* state) {
-    MysqlClient client(scheduler);
+    AsyncMysqlClient client(scheduler);
 
     auto& conn_aw = client.connect("127.0.0.1", 3306, "root", "password", "test");
     std::expected<std::optional<bool>, MysqlError> conn_result;
@@ -167,13 +167,13 @@ int main() {
 #if defined(__cpp_modules) && __cpp_modules >= 201907L
 import galay.mysql;
 #else
-#include "galay-mysql/sync/MysqlSession.h"
+#include "galay-mysql/sync/MysqlClient.h"
 #endif
 
 using namespace galay::mysql;
 
 int main() {
-    MysqlSession session;
+    MysqlClient session;
 
     MysqlConfig cfg;
     cfg.host = "127.0.0.1";

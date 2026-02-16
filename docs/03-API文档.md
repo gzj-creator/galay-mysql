@@ -1,6 +1,6 @@
 # API 文档
 
-本文中的示例代码默认可配合模块化导入使用：`import galay.mysql;`（不支持模块时按需包含对应头文件，如 `galay-mysql/async/MysqlClient.h`）。
+本文中的示例代码默认可配合模块化导入使用：`import galay.mysql;`（不支持模块时按需包含对应头文件，如 `galay-mysql/async/AsyncMysqlClient.h`）。
 
 ## Base 模块
 
@@ -142,14 +142,14 @@ struct AsyncMysqlConfig {
 };
 ```
 
-### MysqlClient
+### AsyncMysqlClient
 
-定义位置：`galay-mysql/async/MysqlClient.h`
+定义位置：`galay-mysql/async/AsyncMysqlClient.h`
 
 ```cpp
-class MysqlClient {
+class AsyncMysqlClient {
 public:
-    MysqlClient(galay::kernel::IOScheduler* scheduler,
+    AsyncMysqlClient(galay::kernel::IOScheduler* scheduler,
                 AsyncMysqlConfig config = AsyncMysqlConfig::noTimeout());
 
     MysqlConnectAwaitable& connect(MysqlConfig config);
@@ -258,11 +258,11 @@ public:
 
     class AcquireAwaitable {
     public:
-        std::expected<std::optional<MysqlClient*>, MysqlError> await_resume();
+        std::expected<std::optional<AsyncMysqlClient*>, MysqlError> await_resume();
     };
 
     AcquireAwaitable& acquire();
-    void release(MysqlClient* client);
+    void release(AsyncMysqlClient* client);
 
     size_t size() const;
     size_t idleCount() const;
@@ -273,7 +273,7 @@ public:
 
 ```cpp
 auto& acq_aw = pool.acquire();
-std::expected<std::optional<MysqlClient*>, MysqlError> acq;
+std::expected<std::optional<AsyncMysqlClient*>, MysqlError> acq;
 
 do {
     acq = co_await acq_aw;
@@ -283,17 +283,17 @@ do {
     }
 } while (!acq->has_value());
 
-MysqlClient* client = acq->value();
+AsyncMysqlClient* client = acq->value();
 ```
 
 ## Sync 模块
 
-### MysqlSession
+### MysqlClient
 
-定义位置：`galay-mysql/sync/MysqlSession.h`
+定义位置：`galay-mysql/sync/MysqlClient.h`
 
 ```cpp
-class MysqlSession {
+class MysqlClient {
 public:
     MysqlVoidResult connect(const MysqlConfig& config);
     MysqlVoidResult connect(const std::string& host, uint16_t port,

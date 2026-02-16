@@ -40,7 +40,7 @@ Coroutine run(IOScheduler* scheduler, AsyncState* state, const mysql_example::My
     );
 
     auto& acq_aw = pool.acquire();
-    std::expected<std::optional<MysqlClient*>, MysqlError> acq;
+    std::expected<std::optional<AsyncMysqlClient*>, MysqlError> acq;
     do {
         acq = co_await acq_aw;
         if (!acq) {
@@ -51,7 +51,7 @@ Coroutine run(IOScheduler* scheduler, AsyncState* state, const mysql_example::My
         }
     } while (!acq->has_value());
 
-    MysqlClient* client = acq->value();
+    AsyncMysqlClient* client = acq->value();
 
     auto& query_aw = client->query("SELECT CONNECTION_ID()");
     std::expected<std::optional<MysqlResultSet>, MysqlError> query_res;
