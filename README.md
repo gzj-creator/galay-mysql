@@ -1,6 +1,6 @@
 # Galay-MySQL
 
-基于 [galay-kernel](https://github.com/gzj-creator/galay) 的 C++23 高性能 MySQL 客户端库，提供异步与同步两套 API。
+基于 [galay-kernel](https://github.com/gzj-creator/galay-kernel) 的 C++23 高性能 MySQL 客户端库，提供异步与同步两套 API。
 
 ## 特性
 
@@ -16,17 +16,38 @@
 - CMake 3.20+
 - OpenSSL
 - spdlog
-- [galay-kernel](https://github.com/gzj-creator/galay)
+- Galay 内部依赖（统一联调推荐）：
+  - [galay-kernel](https://github.com/gzj-creator/galay-kernel)（构建必需）
+  - [galay-utils](https://github.com/gzj-creator/galay-utils)（推荐）
+  - [galay-http](https://github.com/gzj-creator/galay-http)（推荐）
 - MySQL 5.7+ / 8.0+（推荐 8.0）
+
+## 依赖安装（macOS / Homebrew）
+
+```bash
+brew install cmake spdlog openssl mysql-client
+```
+
+## 依赖安装（Ubuntu / Debian）
+
+```bash
+sudo apt-get update
+sudo apt-get install -y cmake g++ libspdlog-dev libssl-dev default-libmysqlclient-dev
+```
 
 ## 构建
 
 ```bash
+git clone https://github.com/gzj-creator/galay-kernel.git
+git clone https://github.com/gzj-creator/galay-utils.git
+git clone https://github.com/gzj-creator/galay-http.git
 git clone https://github.com/gzj-creator/galay-mysql.git
 cd galay-mysql
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j
+cmake --build build --parallel
 ```
+
+仅单独构建 `galay-mysql` 时，最小内部依赖为 `galay-kernel`。
 
 常用开关：
 
@@ -77,7 +98,7 @@ import galay.mysql;
 ```bash
 cmake -S . -B build-mod -G Ninja \
   -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@20/bin/clang++
-cmake --build build-mod --target galay-mysql -j
+cmake --build build-mod --target galay-mysql --parallel
 ```
 
 ## 异步快速示例
@@ -240,7 +261,7 @@ GALAY_MYSQL_DB=test \
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGALAY_MYSQL_BUILD_EXAMPLES=ON
-cmake --build build -j
+cmake --build build --parallel
 ./build/example/E1-AsyncQuery-Include
 ./build/example/E2-SyncQuery-Include
 ```
@@ -253,7 +274,7 @@ cmake -S . -B build-import \
   -DGALAY_MYSQL_BUILD_EXAMPLES=ON \
   -DGALAY_MYSQL_ENABLE_IMPORT_COMPILATION=ON \
   -DGALAY_MYSQL_BUILD_MODULE_EXAMPLES=ON
-cmake --build build-import -j
+cmake --build build-import --parallel
 ```
 
 ## 文档
@@ -265,4 +286,4 @@ cmake --build build-import -j
 
 ## 相关项目
 
-- [galay-kernel](https://github.com/gzj-creator/galay)
+- [galay-kernel](https://github.com/gzj-creator/galay-kernel)
