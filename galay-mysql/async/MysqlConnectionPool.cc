@@ -1,20 +1,19 @@
 #include "MysqlConnectionPool.h"
 
+#include <utility>
+
 namespace galay::mysql
 {
 
 // ======================== MysqlConnectionPool ========================
 
 MysqlConnectionPool::MysqlConnectionPool(galay::kernel::IOScheduler* scheduler,
-                                         const MysqlConfig& config,
-                                         const AsyncMysqlConfig& async_config,
-                                         size_t min_connections,
-                                         size_t max_connections)
+                                         MysqlConnectionPoolConfig config)
     : m_scheduler(scheduler)
-    , m_config(config)
-    , m_async_config(async_config)
-    , m_min_connections(min_connections)
-    , m_max_connections(max_connections)
+    , m_mysql_config(std::move(config.mysql_config))
+    , m_async_config(std::move(config.async_config))
+    , m_min_connections(config.min_connections)
+    , m_max_connections(config.max_connections)
 {
 }
 
@@ -105,7 +104,7 @@ bool MysqlConnectionPool::AcquireAwaitable::await_suspend(std::coroutine_handle<
     m_client = m_pool.createClient();
     if (m_client) {
         m_state = State::Creating;
-        m_connect_awaitable.emplace(*m_client, m_pool.m_config);
+        m_connect_awaitable.emplace(*m_client, m_pool.m_mysql_config);
         return m_connect_awaitable->await_suspend(handle);
     }
 

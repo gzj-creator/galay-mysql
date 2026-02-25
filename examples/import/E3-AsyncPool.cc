@@ -31,13 +31,14 @@ Coroutine run(IOScheduler* scheduler, AsyncState* state, const mysql_example::My
     cfg.password = env_cfg.password;
     cfg.database = env_cfg.database;
 
-    MysqlConnectionPool pool(
-        scheduler,
-        cfg,
-        AsyncMysqlConfig::withTimeout(std::chrono::milliseconds(3000), std::chrono::milliseconds(5000)),
-        1,
-        8
-    );
+    MysqlConnectionPoolConfig pool_cfg;
+    pool_cfg.mysql_config = cfg;
+    pool_cfg.async_config = AsyncMysqlConfig::withTimeout(
+        std::chrono::milliseconds(3000), std::chrono::milliseconds(5000));
+    pool_cfg.min_connections = 1;
+    pool_cfg.max_connections = 8;
+
+    MysqlConnectionPool pool(scheduler, pool_cfg);
 
     auto acq = co_await pool.acquire();
     if (!acq) {

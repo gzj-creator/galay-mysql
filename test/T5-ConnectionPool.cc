@@ -28,7 +28,12 @@ Coroutine testConnectionPool(IOScheduler* scheduler, AsyncTestState* state, mysq
     std::cout << "Testing MySQL connection pool..." << std::endl;
 
     MysqlConfig config = MysqlConfig::create(db_cfg.host, db_cfg.port, db_cfg.user, db_cfg.password, db_cfg.database);
-    MysqlConnectionPool pool(scheduler, config, AsyncMysqlConfig::noTimeout(), 2, 5);
+    MysqlConnectionPoolConfig pool_config;
+    pool_config.mysql_config = config;
+    pool_config.async_config = AsyncMysqlConfig::noTimeout();
+    pool_config.min_connections = 2;
+    pool_config.max_connections = 5;
+    MysqlConnectionPool pool(scheduler, pool_config);
 
     // 获取连接
     std::cout << "Acquiring connection..." << std::endl;

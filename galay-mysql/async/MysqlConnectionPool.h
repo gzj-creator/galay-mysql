@@ -17,6 +17,14 @@
 namespace galay::mysql
 {
 
+struct MysqlConnectionPoolConfig
+{
+    MysqlConfig mysql_config = MysqlConfig::defaultConfig();
+    AsyncMysqlConfig async_config = AsyncMysqlConfig::noTimeout();
+    size_t min_connections = 2;
+    size_t max_connections = 10;
+};
+
 /**
  * @brief 异步MySQL连接池
  * @details 管理多个AsyncMysqlClient连接，支持异步获取和归还
@@ -25,10 +33,7 @@ class MysqlConnectionPool
 {
 public:
     MysqlConnectionPool(galay::kernel::IOScheduler* scheduler,
-                        const MysqlConfig& config,
-                        const AsyncMysqlConfig& async_config = AsyncMysqlConfig::noTimeout(),
-                        size_t min_connections = 2,
-                        size_t max_connections = 10);
+                        MysqlConnectionPoolConfig config = {});
 
     ~MysqlConnectionPool();
 
@@ -89,7 +94,7 @@ private:
     AsyncMysqlClient* createClient();
 
     galay::kernel::IOScheduler* m_scheduler;
-    MysqlConfig m_config;
+    MysqlConfig m_mysql_config;
     AsyncMysqlConfig m_async_config;
     size_t m_min_connections;
     size_t m_max_connections;

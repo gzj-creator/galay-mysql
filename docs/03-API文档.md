@@ -235,30 +235,30 @@ public:
     AsyncMysqlClient(const AsyncMysqlClient&) = delete;
     AsyncMysqlClient& operator=(const AsyncMysqlClient&) = delete;
 
-    MysqlConnectAwaitable& connect(MysqlConfig config);
-    MysqlConnectAwaitable& connect(std::string_view host, uint16_t port,
+    MysqlConnectAwaitable connect(MysqlConfig config);
+    MysqlConnectAwaitable connect(std::string_view host, uint16_t port,
                                    std::string_view user, std::string_view password,
                                    std::string_view database = "");
 
-    MysqlQueryAwaitable& query(std::string_view sql);
-    MysqlPrepareAwaitable& prepare(std::string_view sql);
+    MysqlQueryAwaitable query(std::string_view sql);
+    MysqlPrepareAwaitable prepare(std::string_view sql);
 
-    MysqlStmtExecuteAwaitable& stmtExecute(
+    MysqlStmtExecuteAwaitable stmtExecute(
         uint32_t stmt_id,
         std::span<const std::optional<std::string>> params,
         std::span<const uint8_t> param_types = {});
 
-    MysqlStmtExecuteAwaitable& stmtExecute(
+    MysqlStmtExecuteAwaitable stmtExecute(
         uint32_t stmt_id,
         std::span<const std::optional<std::string_view>> params,
         std::span<const uint8_t> param_types = {});
 
-    MysqlQueryAwaitable& beginTransaction();
-    MysqlQueryAwaitable& commit();
-    MysqlQueryAwaitable& rollback();
+    MysqlQueryAwaitable beginTransaction();
+    MysqlQueryAwaitable commit();
+    MysqlQueryAwaitable rollback();
 
-    MysqlQueryAwaitable& ping();
-    MysqlQueryAwaitable& useDatabase(std::string_view database);
+    MysqlQueryAwaitable ping();
+    MysqlQueryAwaitable useDatabase(std::string_view database);
 
     auto close();
     bool isClosed() const;
@@ -331,20 +331,24 @@ auto& exec_aw = client.stmtExecute(stmt_id, std::span<const std::optional<std::s
 定义位置：`galay-mysql/async/MysqlConnectionPool.h`
 
 ```cpp
+struct MysqlConnectionPoolConfig {
+    MysqlConfig mysql_config = MysqlConfig::defaultConfig();
+    AsyncMysqlConfig async_config = AsyncMysqlConfig::noTimeout();
+    size_t min_connections = 2;
+    size_t max_connections = 10;
+};
+
 class MysqlConnectionPool {
 public:
     MysqlConnectionPool(galay::kernel::IOScheduler* scheduler,
-                        const MysqlConfig& config,
-                        const AsyncMysqlConfig& async_config = AsyncMysqlConfig::noTimeout(),
-                        size_t min_connections = 2,
-                        size_t max_connections = 10);
+                        MysqlConnectionPoolConfig config = {});
 
     class AcquireAwaitable {
     public:
         std::expected<std::optional<AsyncMysqlClient*>, MysqlError> await_resume();
     };
 
-    AcquireAwaitable& acquire();
+    AcquireAwaitable acquire();
     void release(AsyncMysqlClient* client);
 
     size_t size() const;
@@ -508,10 +512,12 @@ A: 构造时指定：
 ```cpp
 MysqlConnectionPool pool(
     scheduler,
-    config,
-    async_config,
-    2,   // min_connections
-    16   // max_connections
+    MysqlConnectionPoolConfig{
+        .mysql_config = config,
+        .async_config = async_config,
+        .min_connections = 2,
+        .max_connections = 16
+    }
 );
 ```
 
