@@ -3,7 +3,7 @@ import galay.mysql;
 #include <iostream>
 #include <optional>
 #include <vector>
-#include "example/common/ExampleConfig.h"
+#include "examples/common/ExampleConfig.h"
 
 using namespace galay::mysql;
 

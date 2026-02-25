@@ -25,13 +25,12 @@ struct AsyncTestState {
 
 // Helper: 执行查询直到完成
 // MysqlQueryAwaitable返回 std::expected<std::optional<MysqlResultSet>, MysqlError>
-// std::nullopt 表示未完成，需要继续co_await
+// 成功时应直接返回完整结果
 #define MYSQL_CO_QUERY(client, sql, result_var) \
     { \
-        auto& _aw = client.query(sql); \
-        std::expected<std::optional<MysqlResultSet>, MysqlError> _r; \
-        do { _r = co_await _aw; if (!_r) break; } while (!_r->has_value()); \
+        auto _r = co_await client.query(sql); \
         if (!_r) { result_var = std::unexpected(_r.error()); } \
+        else if (!_r->has_value()) { result_var = std::unexpected(MysqlError(MYSQL_ERROR_INTERNAL, "Query awaitable resumed without value")); } \
         else { result_var = std::move(_r->value()); } \
     }
 
@@ -44,32 +43,34 @@ Coroutine testAsyncMysql(IOScheduler* scheduler, AsyncTestState* state, mysql_te
     // 连接到MySQL服务器
     std::cout << "Connecting to MySQL server..." << std::endl;
     {
-        auto& aw = client.connect(db_cfg.host, db_cfg.port, db_cfg.user, db_cfg.password, db_cfg.database);
-        std::expected<std::optional<bool>, MysqlError> cr;
-        do {
-            cr = co_await aw;
-            if (!cr) {
-                state->fail("Connect failed: " + cr.error().message());
-                co_return;
-            }
-        } while (!cr->has_value());
+        auto cr = co_await client.connect(db_cfg.host, db_cfg.port, db_cfg.user, db_cfg.password, db_cfg.database);
+        if (!cr) {
+            state->fail("Connect failed: " + cr.error().message());
+            co_return;
+        }
+        if (!cr->has_value()) {
+            state->fail("Connect awaitable resumed without value");
+            co_return;
+        }
     }
     std::cout << "Connected successfully!" << std::endl;
 
     // 创建测试表
     std::cout << "Creating test table..." << std::endl;
     {
-        auto& aw = client.query(
+        auto r = co_await client.query(
             "CREATE TABLE IF NOT EXISTS galay_test ("
             "  id INT AUTO_INCREMENT PRIMARY KEY,"
             "  name VARCHAR(100),"
             "  value INT"
             ") ENGINE=InnoDB"
         );
-        std::expected<std::optional<MysqlResultSet>, MysqlError> r;
-        do { r = co_await aw; if (!r) break; } while (!r->has_value());
         if (!r) {
             state->fail("CREATE TABLE failed: " + r.error().message());
+            co_return;
+        }
+        if (!r->has_value()) {
+            state->fail("CREATE TABLE awaitable resumed without value");
             co_return;
         }
     }
@@ -78,11 +79,13 @@ Coroutine testAsyncMysql(IOScheduler* scheduler, AsyncTestState* state, mysql_te
     // INSERT
     std::cout << "Testing INSERT..." << std::endl;
     {
-        auto& aw = client.query("INSERT INTO galay_test (name, value) VALUES ('test1', 100)");
-        std::expected<std::optional<MysqlResultSet>, MysqlError> r;
-        do { r = co_await aw; if (!r) break; } while (!r->has_value());
+        auto r = co_await client.query("INSERT INTO galay_test (name, value) VALUES ('test1', 100)");
         if (!r) {
             state->fail("INSERT failed: " + r.error().message());
+            co_return;
+        }
+        if (!r->has_value()) {
+            state->fail("INSERT awaitable resumed without value");
             co_return;
         }
         auto& rs = r->value();
@@ -92,11 +95,13 @@ Coroutine testAsyncMysql(IOScheduler* scheduler, AsyncTestState* state, mysql_te
     // SELECT
     std::cout << "Testing SELECT..." << std::endl;
     {
-        auto& aw = client.query("SELECT * FROM galay_test");
-        std::expected<std::optional<MysqlResultSet>, MysqlError> r;
-        do { r = co_await aw; if (!r) break; } while (!r->has_value());
+        auto r = co_await client.query("SELECT * FROM galay_test");
         if (!r) {
             state->fail("SELECT failed: " + r.error().message());
+            co_return;
+        }
+        if (!r->has_value()) {
+            state->fail("SELECT awaitable resumed without value");
             co_return;
         }
         auto& rs = r->value();
@@ -117,11 +122,13 @@ Coroutine testAsyncMysql(IOScheduler* scheduler, AsyncTestState* state, mysql_te
     // UPDATE
     std::cout << "Testing UPDATE..." << std::endl;
     {
-        auto& aw = client.query("UPDATE galay_test SET value = 200 WHERE name = 'test1'");
-        std::expected<std::optional<MysqlResultSet>, MysqlError> r;
-        do { r = co_await aw; if (!r) break; } while (!r->has_value());
+        auto r = co_await client.query("UPDATE galay_test SET value = 200 WHERE name = 'test1'");
         if (!r) {
             state->fail("UPDATE failed: " + r.error().message());
+            co_return;
+        }
+        if (!r->has_value()) {
+            state->fail("UPDATE awaitable resumed without value");
             co_return;
         }
         std::cout << "  Affected rows: " << r->value().affectedRows() << std::endl;
@@ -130,11 +137,13 @@ Coroutine testAsyncMysql(IOScheduler* scheduler, AsyncTestState* state, mysql_te
     // DELETE
     std::cout << "Testing DELETE..." << std::endl;
     {
-        auto& aw = client.query("DELETE FROM galay_test WHERE name = 'test1'");
-        std::expected<std::optional<MysqlResultSet>, MysqlError> r;
-        do { r = co_await aw; if (!r) break; } while (!r->has_value());
+        auto r = co_await client.query("DELETE FROM galay_test WHERE name = 'test1'");
         if (!r) {
             state->fail("DELETE failed: " + r.error().message());
+            co_return;
+        }
+        if (!r->has_value()) {
+            state->fail("DELETE awaitable resumed without value");
             co_return;
         }
         std::cout << "  Affected rows: " << r->value().affectedRows() << std::endl;
@@ -142,9 +151,8 @@ Coroutine testAsyncMysql(IOScheduler* scheduler, AsyncTestState* state, mysql_te
 
     // 清理
     {
-        auto& aw = client.query("DROP TABLE IF EXISTS galay_test");
-        std::expected<std::optional<MysqlResultSet>, MysqlError> r;
-        do { r = co_await aw; if (!r) break; } while (!r->has_value());
+        auto _ = co_await client.query("DROP TABLE IF EXISTS galay_test");
+        (void)_;
     }
 
     // 关闭连接

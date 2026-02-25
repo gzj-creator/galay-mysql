@@ -31,39 +31,39 @@ inline void markFailure(AsyncTestState* state, const std::string& msg) {
 // Helper macros for async MySQL operations
 #define MYSQL_CO_CONNECT(client, host, port, user, pass, db) \
     { \
-        auto& _aw = client.connect(host, port, user, pass, db); \
-        std::expected<std::optional<bool>, MysqlError> _r; \
-        do { _r = co_await _aw; if (!_r) { markFailure(state, "Connect failed: " + _r.error().message()); co_return; } } while (!_r->has_value()); \
+        auto _r = co_await client.connect(host, port, user, pass, db); \
+        if (!_r) { markFailure(state, "Connect failed: " + _r.error().message()); co_return; } \
+        if (!_r->has_value()) { markFailure(state, "Connect awaitable resumed without value"); co_return; } \
     }
 
 #define MYSQL_CO_QUERY(client, sql, result_var) \
     { \
-        auto& _aw = client.query(sql); \
-        std::expected<std::optional<MysqlResultSet>, MysqlError> _r; \
-        do { _r = co_await _aw; if (!_r) { markFailure(state, std::string("Query failed [") + sql + "]: " + _r.error().message()); co_return; } } while (!_r->has_value()); \
+        auto _r = co_await client.query(sql); \
+        if (!_r) { markFailure(state, std::string("Query failed [") + sql + "]: " + _r.error().message()); co_return; } \
+        if (!_r->has_value()) { markFailure(state, std::string("Query awaitable resumed without value [") + sql + "]"); co_return; } \
         if (_r) { result_var = std::move(_r->value()); } \
     }
 
 #define MYSQL_CO_QUERY_VOID(client, sql) \
     { \
-        auto& _aw = client.query(sql); \
-        std::expected<std::optional<MysqlResultSet>, MysqlError> _r; \
-        do { _r = co_await _aw; if (!_r) { markFailure(state, std::string("Query failed [") + sql + "]: " + _r.error().message()); co_return; } } while (!_r->has_value()); \
+        auto _r = co_await client.query(sql); \
+        if (!_r) { markFailure(state, std::string("Query failed [") + sql + "]: " + _r.error().message()); co_return; } \
+        if (!_r->has_value()) { markFailure(state, std::string("Query awaitable resumed without value [") + sql + "]"); co_return; } \
     }
 
 #define MYSQL_CO_PREPARE(client, sql, result_var) \
     { \
-        auto& _aw = client.prepare(sql); \
-        std::expected<std::optional<MysqlPrepareAwaitable::PrepareResult>, MysqlError> _r; \
-        do { _r = co_await _aw; if (!_r) { markFailure(state, std::string("PREPARE failed [") + sql + "]: " + _r.error().message()); co_return; } } while (!_r->has_value()); \
+        auto _r = co_await client.prepare(sql); \
+        if (!_r) { markFailure(state, std::string("PREPARE failed [") + sql + "]: " + _r.error().message()); co_return; } \
+        if (!_r->has_value()) { markFailure(state, std::string("PREPARE awaitable resumed without value [") + sql + "]"); co_return; } \
         if (_r && _r->has_value()) { result_var = std::move(_r->value()); } \
     }
 
 #define MYSQL_CO_EXECUTE(client, stmt_id, params, result_var) \
     { \
-        auto& _aw = client.stmtExecute(stmt_id, params); \
-        std::expected<std::optional<MysqlResultSet>, MysqlError> _r; \
-        do { _r = co_await _aw; if (!_r) { markFailure(state, std::string("EXECUTE failed [stmt=") + std::to_string(stmt_id) + "]: " + _r.error().message()); co_return; } } while (!_r->has_value()); \
+        auto _r = co_await client.stmtExecute(stmt_id, params); \
+        if (!_r) { markFailure(state, std::string("EXECUTE failed [stmt=") + std::to_string(stmt_id) + "]: " + _r.error().message()); co_return; } \
+        if (!_r->has_value()) { markFailure(state, std::string("EXECUTE awaitable resumed without value [stmt=") + std::to_string(stmt_id) + "]"); co_return; } \
         if (_r) { result_var = std::move(_r->value()); } \
     }
 

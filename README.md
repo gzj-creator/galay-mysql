@@ -250,7 +250,7 @@ GALAY_MYSQL_DB=test \
 
 ## 示例目录
 
-项目新增 `example/`，每个功能都提供 include/import 两套示例：
+项目新增 `examples/`，每个功能都提供 include/import 两套示例：
 
 - `E1` 异步查询
 - `E2` 同步查询
@@ -262,8 +262,8 @@ GALAY_MYSQL_DB=test \
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGALAY_MYSQL_BUILD_EXAMPLES=ON
 cmake --build build --parallel
-./build/example/E1-AsyncQuery-Include
-./build/example/E2-SyncQuery-Include
+./build/examples/E1-AsyncQuery-Include
+./build/examples/E2-SyncQuery-Include
 ```
 
 尝试构建 import 版本（支持时）：
@@ -279,10 +279,12 @@ cmake --build build-import --parallel
 
 ## 文档
 
-- [快速开始](docs/01-快速开始.md)
-- [架构设计](docs/02-架构设计.md)
-- [API 文档](docs/03-API文档.md)
-- [示例代码](docs/04-示例代码.md)
+- [快速开始](docs/01-快速开始.md) - 依赖安装、编译构建、运行测试和示例
+- [架构设计](docs/02-架构设计.md) - 分层架构、异步链式 Awaitable、连接池设计、性能考量
+- [API 文档](docs/03-API文档.md) - 完整 API 参考、使用注意事项、性能优化建议
+- [示例代码](docs/04-示例代码.md) - 异步/同步查询、连接池、事务、预处理语句、错误处理
+- [高级主题](docs/05-高级主题.md) - 性能优化、超时策略、事务管理、字段类型处理、安全性、调试技巧
+- [常见问题](docs/06-常见问题.md) - 编译、连接、查询、事务、连接池、异步、性能等常见问题解答
 
 ## 相关项目
 

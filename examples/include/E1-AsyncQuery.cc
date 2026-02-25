@@ -1,5 +1,3 @@
-import galay.mysql;
-
 #include <atomic>
 #include <chrono>
 #include <expected>
@@ -8,7 +6,8 @@ import galay.mysql;
 #include <string>
 #include <thread>
 #include <galay-kernel/kernel/Runtime.h>
-#include "example/common/ExampleConfig.h"
+#include "examples/common/ExampleConfig.h"
+#include "galay-mysql/async/AsyncMysqlClient.h"
 
 using namespace galay::kernel;
 using namespace galay::mysql;
@@ -26,36 +25,41 @@ Coroutine run(IOScheduler* scheduler, AsyncState* state, const mysql_example::My
 {
     AsyncMysqlClient client(scheduler);
 
-    auto& conn_aw = client.connect(cfg.host, cfg.port, cfg.user, cfg.password, cfg.database);
-    std::expected<std::optional<bool>, MysqlError> conn_result;
-    do {
-        conn_result = co_await conn_aw;
-        if (!conn_result) {
-            state->error = "connect failed: " + conn_result.error().message();
-            state->ok.store(false, std::memory_order_relaxed);
-            state->done.store(true, std::memory_order_release);
-            co_return;
-        }
-    } while (!conn_result->has_value());
+    auto conn_result = co_await client.connect(cfg.host, cfg.port, cfg.user, cfg.password, cfg.database);
+    if (!conn_result) {
+        state->error = "connect failed: " + conn_result.error().message();
+        state->ok.store(false, std::memory_order_relaxed);
+        state->done.store(true, std::memory_order_release);
+        co_return;
+    }
+    if (!conn_result->has_value()) {
+        state->error = "connect awaitable resumed without value";
+        state->ok.store(false, std::memory_order_relaxed);
+        state->done.store(true, std::memory_order_release);
+        co_return;
+    }
 
-    auto& query_aw = client.query("SELECT 1");
-    std::expected<std::optional<MysqlResultSet>, MysqlError> query_result;
-    do {
-        query_result = co_await query_aw;
-        if (!query_result) {
-            state->error = "query failed: " + query_result.error().message();
-            state->ok.store(false, std::memory_order_relaxed);
-            co_await client.close();
-            state->done.store(true, std::memory_order_release);
-            co_return;
-        }
-    } while (!query_result->has_value());
+    auto query_result = co_await client.query("SELECT 1");
+    if (!query_result) {
+        state->error = "query failed: " + query_result.error().message();
+        state->ok.store(false, std::memory_order_relaxed);
+        co_await client.close();
+        state->done.store(true, std::memory_order_release);
+        co_return;
+    }
+    if (!query_result->has_value()) {
+        state->error = "query awaitable resumed without value";
+        state->ok.store(false, std::memory_order_relaxed);
+        co_await client.close();
+        state->done.store(true, std::memory_order_release);
+        co_return;
+    }
 
     const MysqlResultSet& rs = query_result->value();
     if (rs.rowCount() > 0) {
-        std::cout << "[E1-import] SELECT 1 => " << rs.row(0).getString(0) << std::endl;
+        std::cout << "[E1] SELECT 1 => " << rs.row(0).getString(0) << std::endl;
     } else {
-        std::cout << "[E1-import] empty result" << std::endl;
+        std::cout << "[E1] empty result" << std::endl;
     }
 
     co_await client.close();

@@ -4,6 +4,7 @@ include_guard(GLOBAL)
 
 option(GALAY_MYSQL_BUILD_TESTS "Build galay-mysql tests" ON)
 option(GALAY_MYSQL_BUILD_EXAMPLES "Build galay-mysql examples" ON)
+option(GALAY_MYSQL_BUILD_BENCHMARKS "Build galay-mysql benchmarks" ON)
 option(GALAY_MYSQL_BUILD_SHARED_LIBS "Build galay-mysql as a shared library" ON)
 option(GALAY_MYSQL_CXX_EXTENSIONS "Enable compiler-specific C++ extensions" OFF)
 option(GALAY_MYSQL_INSTALL_MODULE_INTERFACE "Install C++ module interface files (*.cppm)" ON)

@@ -30,32 +30,33 @@ Coroutine testConnectionPool(IOScheduler* scheduler, AsyncTestState* state, mysq
     MysqlConfig config = MysqlConfig::create(db_cfg.host, db_cfg.port, db_cfg.user, db_cfg.password, db_cfg.database);
     MysqlConnectionPool pool(scheduler, config, AsyncMysqlConfig::noTimeout(), 2, 5);
 
-    // 获取连接 (需要循环，因为连接创建是多步的)
+    // 获取连接
     std::cout << "Acquiring connection..." << std::endl;
     AsyncMysqlClient* client = nullptr;
     {
-        auto& aw = pool.acquire();
-        std::expected<std::optional<AsyncMysqlClient*>, MysqlError> ar;
-        do {
-            ar = co_await aw;
-            if (!ar) {
-                state->fail("Acquire failed: " + ar.error().message());
-                co_return;
-            }
-        } while (!ar->has_value());
+        auto ar = co_await pool.acquire();
+        if (!ar) {
+            state->fail("Acquire failed: " + ar.error().message());
+            co_return;
+        }
+        if (!ar->has_value()) {
+            state->fail("Acquire awaitable resumed without value");
+            co_return;
+        }
         client = ar->value();
     }
     std::cout << "Connection acquired, pool size: " << pool.size() << std::endl;
 
     // 执行查询
     {
-        auto& qaw = client->query("SELECT 1 AS test_col");
-        std::expected<std::optional<MysqlResultSet>, MysqlError> qr;
-        do { qr = co_await qaw; if (!qr) break; } while (!qr->has_value());
+        auto qr = co_await client->query("SELECT 1 AS test_col");
         if (qr && qr->has_value()) {
             std::cout << "  Query result: " << qr->value().row(0).getString(0) << std::endl;
         } else if (!qr) {
             state->fail("Query failed: " + qr.error().message());
+            co_return;
+        } else {
+            state->fail("Query awaitable resumed without value");
             co_return;
         }
     }
@@ -66,16 +67,17 @@ Coroutine testConnectionPool(IOScheduler* scheduler, AsyncTestState* state, mysq
 
     // 再次获取（应该复用已有连接，不需要循环）
     {
-        auto& aw2 = pool.acquire();
-        auto ar2 = co_await aw2;
+        auto ar2 = co_await pool.acquire();
         if (!ar2) {
             state->fail("Second acquire failed: " + ar2.error().message());
             co_return;
         }
-        if (ar2->has_value()) {
-            std::cout << "Connection reused, pool size: " << pool.size() << std::endl;
-            pool.release(ar2->value());
+        if (!ar2->has_value()) {
+            state->fail("Second acquire awaitable resumed without value");
+            co_return;
         }
+        std::cout << "Connection reused, pool size: " << pool.size() << std::endl;
+        pool.release(ar2->value());
     }
 
     std::cout << "Connection pool test completed." << std::endl;

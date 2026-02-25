@@ -1,3 +1,5 @@
+import galay.mysql;
+
 #include <atomic>
 #include <chrono>
 #include <expected>
@@ -6,8 +8,7 @@
 #include <string>
 #include <thread>
 #include <galay-kernel/kernel/Runtime.h>
-#include "example/common/ExampleConfig.h"
-#include "galay-mysql/async/MysqlConnectionPool.h"
+#include "examples/common/ExampleConfig.h"
 
 using namespace galay::kernel;
 using namespace galay::mysql;
@@ -38,36 +39,41 @@ Coroutine run(IOScheduler* scheduler, AsyncState* state, const mysql_example::My
         8
     );
 
-    auto& acq_aw = pool.acquire();
-    std::expected<std::optional<AsyncMysqlClient*>, MysqlError> acq;
-    do {
-        acq = co_await acq_aw;
-        if (!acq) {
-            state->error = "acquire failed: " + acq.error().message();
-            state->ok.store(false, std::memory_order_relaxed);
-            state->done.store(true, std::memory_order_release);
-            co_return;
-        }
-    } while (!acq->has_value());
+    auto acq = co_await pool.acquire();
+    if (!acq) {
+        state->error = "acquire failed: " + acq.error().message();
+        state->ok.store(false, std::memory_order_relaxed);
+        state->done.store(true, std::memory_order_release);
+        co_return;
+    }
+    if (!acq->has_value()) {
+        state->error = "acquire awaitable resumed without value";
+        state->ok.store(false, std::memory_order_relaxed);
+        state->done.store(true, std::memory_order_release);
+        co_return;
+    }
 
     AsyncMysqlClient* client = acq->value();
 
-    auto& query_aw = client->query("SELECT CONNECTION_ID()");
-    std::expected<std::optional<MysqlResultSet>, MysqlError> query_res;
-    do {
-        query_res = co_await query_aw;
-        if (!query_res) {
-            state->error = "query failed: " + query_res.error().message();
-            state->ok.store(false, std::memory_order_relaxed);
-            pool.release(client);
-            state->done.store(true, std::memory_order_release);
-            co_return;
-        }
-    } while (!query_res->has_value());
+    auto query_res = co_await client->query("SELECT CONNECTION_ID()");
+    if (!query_res) {
+        state->error = "query failed: " + query_res.error().message();
+        state->ok.store(false, std::memory_order_relaxed);
+        pool.release(client);
+        state->done.store(true, std::memory_order_release);
+        co_return;
+    }
+    if (!query_res->has_value()) {
+        state->error = "query awaitable resumed without value";
+        state->ok.store(false, std::memory_order_relaxed);
+        pool.release(client);
+        state->done.store(true, std::memory_order_release);
+        co_return;
+    }
 
     const auto& rs = query_res->value();
     if (rs.rowCount() > 0) {
-        std::cout << "[E3] CONNECTION_ID() => " << rs.row(0).getString(0) << std::endl;
+        std::cout << "[E3-import] CONNECTION_ID() => " << rs.row(0).getString(0) << std::endl;
     }
 
     pool.release(client);

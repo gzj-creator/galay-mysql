@@ -453,7 +453,7 @@ public:
 
 /**
  * @brief 异步MySQL客户端
- * @details 所有异步接口返回自定义Awaitable引用（而非Coroutine）
+ * @details 所有异步接口返回自定义Awaitable值对象（而非Coroutine）
  *
  * @code
  * Coroutine testMysql(IOScheduler* scheduler) {
@@ -484,35 +484,35 @@ public:
 
     // ======================== 连接 ========================
 
-    MysqlConnectAwaitable& connect(MysqlConfig config);
-    MysqlConnectAwaitable& connect(std::string_view host, uint16_t port,
-                                    std::string_view user, std::string_view password,
-                                    std::string_view database = "");
+    MysqlConnectAwaitable connect(MysqlConfig config);
+    MysqlConnectAwaitable connect(std::string_view host, uint16_t port,
+                                  std::string_view user, std::string_view password,
+                                  std::string_view database = "");
 
     // ======================== 查询 ========================
 
-    MysqlQueryAwaitable& query(std::string_view sql);
+    MysqlQueryAwaitable query(std::string_view sql);
 
     // ======================== 预处理语句 ========================
 
-    MysqlPrepareAwaitable& prepare(std::string_view sql);
-    MysqlStmtExecuteAwaitable& stmtExecute(uint32_t stmt_id,
-                                             std::span<const std::optional<std::string>> params,
-                                             std::span<const uint8_t> param_types = {});
-    MysqlStmtExecuteAwaitable& stmtExecute(uint32_t stmt_id,
-                                             std::span<const std::optional<std::string_view>> params,
-                                             std::span<const uint8_t> param_types = {});
+    MysqlPrepareAwaitable prepare(std::string_view sql);
+    MysqlStmtExecuteAwaitable stmtExecute(uint32_t stmt_id,
+                                          std::span<const std::optional<std::string>> params,
+                                          std::span<const uint8_t> param_types = {});
+    MysqlStmtExecuteAwaitable stmtExecute(uint32_t stmt_id,
+                                          std::span<const std::optional<std::string_view>> params,
+                                          std::span<const uint8_t> param_types = {});
 
     // ======================== 事务 ========================
 
-    MysqlQueryAwaitable& beginTransaction();
-    MysqlQueryAwaitable& commit();
-    MysqlQueryAwaitable& rollback();
+    MysqlQueryAwaitable beginTransaction();
+    MysqlQueryAwaitable commit();
+    MysqlQueryAwaitable rollback();
 
     // ======================== 工具命令 ========================
 
-    MysqlQueryAwaitable& ping();
-    MysqlQueryAwaitable& useDatabase(std::string_view database);
+    MysqlQueryAwaitable ping();
+    MysqlQueryAwaitable useDatabase(std::string_view database);
 
     // ======================== 连接管理 ========================
 
@@ -543,12 +543,6 @@ private:
     AsyncMysqlConfig m_config;
     RingBuffer m_ring_buffer;
     uint32_t m_server_capabilities = 0;
-
-    // 存储awaitable对象
-    std::optional<MysqlConnectAwaitable> m_connect_awaitable;
-    std::optional<MysqlQueryAwaitable> m_query_awaitable;
-    std::optional<MysqlPrepareAwaitable> m_prepare_awaitable;
-    std::optional<MysqlStmtExecuteAwaitable> m_stmt_execute_awaitable;
 
     std::shared_ptr<spdlog::logger> m_logger;
 };

@@ -72,13 +72,7 @@ size_t MysqlConnectionPool::idleCount() const
     return m_idle_clients.size();
 }
 
-MysqlConnectionPool::AcquireAwaitable& MysqlConnectionPool::acquire()
-{
-    if (!m_acquire_awaitable.has_value() || m_acquire_awaitable->isInvalid()) {
-        m_acquire_awaitable.emplace(*this);
-    }
-    return *m_acquire_awaitable;
-}
+MysqlConnectionPool::AcquireAwaitable MysqlConnectionPool::acquire() { return AcquireAwaitable(*this); }
 
 // ======================== AcquireAwaitable ========================
 
@@ -95,40 +89,32 @@ bool MysqlConnectionPool::AcquireAwaitable::await_ready() const noexcept
 
 bool MysqlConnectionPool::AcquireAwaitable::await_suspend(std::coroutine_handle<> handle)
 {
-    if (m_state == State::Invalid) {
-        // 尝试获取空闲连接
-        m_client = m_pool.tryAcquire();
-        if (m_client) {
-            m_state = State::Ready;
-            m_connect_awaitable = nullptr;
-            return false; // 不挂起，立即返回
-        }
-
-        // 尝试创建新连接
-        m_client = m_pool.createClient();
-        if (m_client) {
-            m_state = State::Creating;
-            m_connect_awaitable = &m_client->connect(m_pool.m_config);
-            return m_connect_awaitable->await_suspend(handle);
-        }
-
-        // 池已满，等待连接释放
-        m_state = State::Waiting;
-        m_connect_awaitable = nullptr;
-        std::lock_guard<std::mutex> lock(m_pool.m_mutex);
-        m_pool.m_waiters.push(handle);
-        return true;
+    if (m_state != State::Invalid) {
+        return false;
     }
-    else if (m_state == State::Creating) {
-        // 继续连接流程
-        if (!m_connect_awaitable) {
-            m_state = State::Invalid;
-            return false;
-        }
+
+    // 尝试获取空闲连接
+    m_client = m_pool.tryAcquire();
+    if (m_client) {
+        m_state = State::Ready;
+        m_connect_awaitable.reset();
+        return false; // 不挂起，立即返回
+    }
+
+    // 尝试创建新连接
+    m_client = m_pool.createClient();
+    if (m_client) {
+        m_state = State::Creating;
+        m_connect_awaitable.emplace(*m_client, m_pool.m_config);
         return m_connect_awaitable->await_suspend(handle);
     }
 
-    return false;
+    // 池已满，等待连接释放
+    m_state = State::Waiting;
+    m_connect_awaitable.reset();
+    std::lock_guard<std::mutex> lock(m_pool.m_mutex);
+    m_pool.m_waiters.push(handle);
+    return true;
 }
 
 std::expected<std::optional<AsyncMysqlClient*>, MysqlError>
@@ -136,35 +122,37 @@ MysqlConnectionPool::AcquireAwaitable::await_resume()
 {
     if (m_state == State::Ready) {
         m_state = State::Invalid;
-        m_connect_awaitable = nullptr;
+        m_connect_awaitable.reset();
         return m_client;
     }
     else if (m_state == State::Creating) {
-        if (!m_connect_awaitable) {
+        if (!m_connect_awaitable.has_value()) {
             m_state = State::Invalid;
+            m_client = nullptr;
             return std::unexpected(MysqlError(MYSQL_ERROR_INTERNAL, "Missing connect awaitable in creating state"));
         }
 
-        auto result = m_connect_awaitable->await_resume();
+        auto result = m_connect_awaitable.value().await_resume();
+        m_connect_awaitable.reset();
+
         if (!result) {
             m_state = State::Invalid;
-            m_connect_awaitable = nullptr;
+            m_client = nullptr;
             return std::unexpected(result.error());
         }
-        if (result->has_value()) {
-            // 连接完成
+        if (!result->has_value()) {
             m_state = State::Invalid;
-            m_connect_awaitable = nullptr;
-            return m_client;
+            m_client = nullptr;
+            return std::unexpected(MysqlError(MYSQL_ERROR_INTERNAL, "Connect awaitable resumed without value"));
         }
-        // 连接未完成，保持Creating状态继续
-        return std::nullopt;
+        m_state = State::Invalid;
+        return m_client;
     }
     else if (m_state == State::Waiting) {
         // 被唤醒后，从池中获取连接
         m_client = m_pool.tryAcquire();
         m_state = State::Invalid;
-        m_connect_awaitable = nullptr;
+        m_connect_awaitable.reset();
         if (m_client) {
             return m_client;
         }
@@ -172,7 +160,8 @@ MysqlConnectionPool::AcquireAwaitable::await_resume()
     }
 
     m_state = State::Invalid;
-    m_connect_awaitable = nullptr;
+    m_connect_awaitable.reset();
+    m_client = nullptr;
     return std::unexpected(MysqlError(MYSQL_ERROR_INTERNAL, "Invalid acquire state"));
 }
 

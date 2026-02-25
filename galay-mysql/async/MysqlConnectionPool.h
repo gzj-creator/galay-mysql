@@ -11,6 +11,7 @@
 #include <queue>
 #include <mutex>
 #include <atomic>
+#include <optional>
 #include <coroutine>
 
 namespace galay::mysql
@@ -47,8 +48,6 @@ public:
         bool await_suspend(std::coroutine_handle<> handle);
         std::expected<std::optional<AsyncMysqlClient*>, MysqlError> await_resume();
 
-        bool isInvalid() const { return m_state == State::Invalid; }
-
     private:
         enum class State {
             Invalid,
@@ -60,13 +59,13 @@ public:
         MysqlConnectionPool& m_pool;
         State m_state;
         AsyncMysqlClient* m_client = nullptr;
-        MysqlConnectAwaitable* m_connect_awaitable = nullptr;
+        std::optional<MysqlConnectAwaitable> m_connect_awaitable;
     };
 
     /**
      * @brief 获取一个连接
      */
-    AcquireAwaitable& acquire();
+    AcquireAwaitable acquire();
 
     /**
      * @brief 归还连接到池中
@@ -101,7 +100,6 @@ private:
     std::queue<std::coroutine_handle<>> m_waiters;
     std::atomic<size_t> m_total_connections{0};
 
-    std::optional<AcquireAwaitable> m_acquire_awaitable;
 };
 
 } // namespace galay::mysql
