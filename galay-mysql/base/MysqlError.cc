@@ -47,6 +47,7 @@ std::string MysqlError::message() const
     case MYSQL_ERROR_INTERNAL:         base = "Internal error"; break;
     case MYSQL_ERROR_BUFFER_OVERFLOW:  base = "Buffer overflow"; break;
     case MYSQL_ERROR_INVALID_PARAM:    base = "Invalid parameter"; break;
+    default:                           base = "unknown error"; break;
     }
     if (m_server_errno != 0) {
         base += " (errno=" + std::to_string(m_server_errno) + ")";

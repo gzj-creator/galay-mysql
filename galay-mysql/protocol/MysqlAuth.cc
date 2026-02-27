@@ -1,6 +1,7 @@
 #include "MysqlAuth.h"
 #include <openssl/sha.h>
 #include <cstring>
+#include <algorithm>
 
 namespace galay::mysql::protocol
 {
@@ -21,8 +22,9 @@ std::string AuthPlugin::sha256(const std::string& data)
 
 std::string AuthPlugin::xorStrings(const std::string& a, const std::string& b)
 {
-    std::string result(a.size(), '\0');
-    for (size_t i = 0; i < a.size(); ++i) {
+    size_t min_len = std::min(a.size(), b.size());
+    std::string result(min_len, '\0');
+    for (size_t i = 0; i < min_len; ++i) {
         result[i] = a[i] ^ b[i];
     }
     return result;

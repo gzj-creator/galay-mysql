@@ -99,7 +99,7 @@ private:
     size_t m_min_connections;
     size_t m_max_connections;
 
-    std::mutex m_mutex;
+    mutable std::mutex m_mutex;
     std::queue<AsyncMysqlClient*> m_idle_clients;
     std::vector<std::unique_ptr<AsyncMysqlClient>> m_all_clients;
     std::queue<std::coroutine_handle<>> m_waiters;

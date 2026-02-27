@@ -125,6 +125,21 @@ MysqlError toTimeoutOrInternalError(const IOError& io_error)
     return MysqlError(MYSQL_ERROR_INTERNAL, io_error.message());
 }
 
+inline std::string_view linearizeReadIovecs(
+    const std::vector<struct iovec>& iovecs,
+    std::string& scratch)
+{
+    if (iovecs.size() == 1) {
+        return std::string_view(static_cast<const char*>(iovecs[0].iov_base),
+                                iovecs[0].iov_len);
+    }
+    scratch.clear();
+    for (const auto& iov : iovecs) {
+        scratch.append(static_cast<const char*>(iov.iov_base), iov.iov_len);
+    }
+    return std::string_view(scratch);
+}
+
 }
 
 // ======================== MysqlConnectAwaitable ========================
@@ -452,11 +467,9 @@ std::expected<bool, MysqlError> MysqlConnectAwaitable::parseHandshakeFromRingBuf
         return false;
     }
 
-    const char* data = static_cast<const char*>(read_iovecs[0].iov_base);
-    size_t len = read_iovecs[0].iov_len;
-    if (read_iovecs.size() > 1) {
-        len += read_iovecs[1].iov_len;
-    }
+    auto linear = detail::linearizeReadIovecs(read_iovecs, m_parse_scratch);
+    const char* data = linear.data();
+    size_t len = linear.size();
 
     size_t consumed = 0;
     auto pkt = m_client.m_parser.extractPacket(data, len, consumed);
@@ -524,11 +537,9 @@ std::expected<bool, MysqlError> MysqlConnectAwaitable::parseAuthResultFromRingBu
             return false;
         }
 
-        const char* data = static_cast<const char*>(read_iovecs[0].iov_base);
-        size_t len = read_iovecs[0].iov_len;
-        if (read_iovecs.size() > 1) {
-            len += read_iovecs[1].iov_len;
-        }
+        auto linear = detail::linearizeReadIovecs(read_iovecs, m_parse_scratch);
+        const char* data = linear.data();
+        size_t len = linear.size();
 
         size_t consumed = 0;
         auto pkt = m_client.m_parser.extractPacket(data, len, consumed);
@@ -807,9 +818,9 @@ std::expected<bool, MysqlError> MysqlQueryAwaitable::tryParseFromRingBuffer()
             return false;
         }
 
-        const char* data = static_cast<const char*>(read_iovecs[0].iov_base);
-        size_t len = read_iovecs[0].iov_len;
-        if (read_iovecs.size() > 1) len += read_iovecs[1].iov_len;
+        auto linear = detail::linearizeReadIovecs(read_iovecs, m_parse_scratch);
+        const char* data = linear.data();
+        size_t len = linear.size();
 
         size_t consumed = 0;
         auto pkt = m_client.m_parser.extractPacket(data, len, consumed);
@@ -1175,9 +1186,9 @@ std::expected<bool, MysqlError> MysqlPrepareAwaitable::tryParseFromRingBuffer()
             return false;
         }
 
-        const char* data = static_cast<const char*>(read_iovecs[0].iov_base);
-        size_t len = read_iovecs[0].iov_len;
-        if (read_iovecs.size() > 1) len += read_iovecs[1].iov_len;
+        auto linear = detail::linearizeReadIovecs(read_iovecs, m_parse_scratch);
+        const char* data = linear.data();
+        size_t len = linear.size();
 
         size_t consumed = 0;
         auto pkt = m_client.m_parser.extractPacket(data, len, consumed);
@@ -1530,9 +1541,9 @@ std::expected<bool, MysqlError> MysqlStmtExecuteAwaitable::tryParseFromRingBuffe
             return false;
         }
 
-        const char* data = static_cast<const char*>(read_iovecs[0].iov_base);
-        size_t len = read_iovecs[0].iov_len;
-        if (read_iovecs.size() > 1) len += read_iovecs[1].iov_len;
+        auto linear = detail::linearizeReadIovecs(read_iovecs, m_parse_scratch);
+        const char* data = linear.data();
+        size_t len = linear.size();
 
         size_t consumed = 0;
         auto pkt = m_client.m_parser.extractPacket(data, len, consumed);
@@ -1681,14 +1692,7 @@ AsyncMysqlClient::AsyncMysqlClient(IOScheduler* scheduler, AsyncMysqlConfig conf
     , m_config(std::move(config))
     , m_ring_buffer(m_config.buffer_size)
 {
-    try {
-        m_logger = spdlog::get("MysqlClientLogger");
-        if (!m_logger) {
-            m_logger = spdlog::stdout_color_mt("MysqlClientLogger");
-        }
-    } catch (const spdlog::spdlog_ex&) {
-        m_logger = spdlog::get("MysqlClientLogger");
-    }
+    m_logger = MysqlLog::getInstance()->getLogger();
 }
 
 AsyncMysqlClient::AsyncMysqlClient(AsyncMysqlClient&& other) noexcept

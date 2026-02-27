@@ -16,9 +16,8 @@
 #include <optional>
 #include <vector>
 #include <coroutine>
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
 #include "galay-mysql/base/MysqlError.h"
+#include "galay-mysql/base/MysqlLog.h"
 #include "galay-mysql/base/MysqlValue.h"
 #include "galay-mysql/base/MysqlConfig.h"
 #include "galay-mysql/protocol/MysqlProtocol.h"
@@ -156,6 +155,7 @@ private:
     ProtocolAuthSendAwaitable m_auth_send_awaitable;
     ProtocolAuthResultRecvAwaitable m_auth_result_recv_awaitable;
     std::optional<MysqlError> m_chain_error;
+    std::string m_parse_scratch;
 };
 
 // ============= MysqlQueryAwaitable ========================
@@ -247,6 +247,7 @@ private:
     ProtocolSendAwaitable m_send_awaitable;
     ProtocolRecvAwaitable m_recv_awaitable;
     std::optional<MysqlError> m_chain_error;
+    std::string m_parse_scratch;
 
 public:
     // TimeoutSupport需要访问此成员
@@ -352,6 +353,7 @@ private:
     ProtocolSendAwaitable m_send_awaitable;
     ProtocolRecvAwaitable m_recv_awaitable;
     std::optional<MysqlError> m_chain_error;
+    std::string m_parse_scratch;
 
 public:
     std::expected<std::optional<PrepareResult>, galay::kernel::IOError> m_result;
@@ -444,6 +446,7 @@ private:
     ProtocolSendAwaitable m_send_awaitable;
     ProtocolRecvAwaitable m_recv_awaitable;
     std::optional<MysqlError> m_chain_error;
+    std::string m_parse_scratch;
 
 public:
     std::expected<std::optional<MysqlResultSet>, galay::kernel::IOError> m_result;
@@ -516,7 +519,7 @@ public:
 
     // ======================== 连接管理 ========================
 
-    auto close() { return m_socket.close(); }
+    auto close() { m_is_closed = true; return m_socket.close(); }
     bool isClosed() const { return m_is_closed; }
 
     // ======================== 内部访问 ========================
@@ -527,7 +530,8 @@ public:
     protocol::MysqlEncoder& encoder() { return m_encoder; }
     uint32_t serverCapabilities() const { return m_server_capabilities; }
     void setServerCapabilities(uint32_t caps) { m_server_capabilities = caps; }
-    std::shared_ptr<spdlog::logger>& logger() { return m_logger; }
+    MysqlLoggerPtr& logger() { return m_logger; }
+    void setLogger(MysqlLoggerPtr logger) { m_logger = std::move(logger); }
 
 private:
     friend class MysqlConnectAwaitable;
@@ -544,7 +548,7 @@ private:
     RingBuffer m_ring_buffer;
     uint32_t m_server_capabilities = 0;
 
-    std::shared_ptr<spdlog::logger> m_logger;
+    MysqlLoggerPtr m_logger;
 };
 
 } // namespace galay::mysql

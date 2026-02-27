@@ -19,11 +19,20 @@ MysqlConnectionPool::MysqlConnectionPool(galay::kernel::IOScheduler* scheduler,
 
 MysqlConnectionPool::~MysqlConnectionPool()
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
-    while (!m_idle_clients.empty()) {
-        m_idle_clients.pop();
+    std::queue<std::coroutine_handle<>> waiters_to_resume;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        waiters_to_resume.swap(m_waiters);
+        while (!m_idle_clients.empty()) {
+            m_idle_clients.pop();
+        }
+        m_all_clients.clear();
     }
-    m_all_clients.clear();
+    while (!waiters_to_resume.empty()) {
+        auto h = waiters_to_resume.front();
+        waiters_to_resume.pop();
+        h.resume();
+    }
 }
 
 AsyncMysqlClient* MysqlConnectionPool::tryAcquire()
@@ -54,20 +63,23 @@ void MysqlConnectionPool::release(AsyncMysqlClient* client)
 {
     if (!client) return;
 
-    std::lock_guard<std::mutex> lock(m_mutex);
-    if (!m_waiters.empty()) {
-        auto waiter = m_waiters.front();
-        m_waiters.pop();
+    std::coroutine_handle<> waiter_to_resume;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (!m_waiters.empty()) {
+            waiter_to_resume = m_waiters.front();
+            m_waiters.pop();
+        }
         m_idle_clients.push(client);
-        waiter.resume();
-    } else {
-        m_idle_clients.push(client);
+    }
+    if (waiter_to_resume) {
+        waiter_to_resume.resume();
     }
 }
 
 size_t MysqlConnectionPool::idleCount() const
 {
-    // 注意：这不是线程安全的精确值，仅供参考
+    std::lock_guard<std::mutex> lock(m_mutex);
     return m_idle_clients.size();
 }
 
