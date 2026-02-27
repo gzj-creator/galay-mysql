@@ -38,7 +38,7 @@ Coroutine testAsyncMysql(IOScheduler* scheduler, AsyncTestState* state, mysql_te
 {
     std::cout << "Testing asynchronous MySQL operations..." << std::endl;
 
-    AsyncMysqlClient client(scheduler);
+    auto client = AsyncMysqlClientBuilder().scheduler(scheduler).build();
 
     // 连接到MySQL服务器
     std::cout << "Connecting to MySQL server..." << std::endl;

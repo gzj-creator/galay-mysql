@@ -55,7 +55,7 @@ Coroutine testTransaction(IOScheduler* scheduler, AsyncTestState* state, mysql_t
 {
     std::cout << "Testing MySQL transactions..." << std::endl;
 
-    AsyncMysqlClient client(scheduler);
+    auto client = AsyncMysqlClientBuilder().scheduler(scheduler).build();
 
     MYSQL_CO_CONNECT(client, db_cfg.host, db_cfg.port, db_cfg.user, db_cfg.password, db_cfg.database);
     std::cout << "Connected." << std::endl;

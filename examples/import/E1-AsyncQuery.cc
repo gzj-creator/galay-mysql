@@ -24,7 +24,7 @@ struct AsyncState {
 
 Coroutine run(IOScheduler* scheduler, AsyncState* state, const mysql_example::MysqlExampleConfig& cfg)
 {
-    AsyncMysqlClient client(scheduler);
+    auto client = AsyncMysqlClientBuilder().scheduler(scheduler).build();
 
     auto conn_result = co_await client.connect(cfg.host, cfg.port, cfg.user, cfg.password, cfg.database);
     if (!conn_result) {

@@ -36,7 +36,7 @@ Coroutine runWorker(IOScheduler* scheduler,
                     BenchmarkState* state,
                     mysql_benchmark::MysqlBenchmarkConfig cfg)
 {
-    AsyncMysqlClient client(scheduler);
+    auto client = AsyncMysqlClientBuilder().scheduler(scheduler).build();
 
     auto connect_result = co_await client.connect(cfg.host, cfg.port, cfg.user, cfg.password, cfg.database);
     if (!connect_result || !connect_result->has_value()) {

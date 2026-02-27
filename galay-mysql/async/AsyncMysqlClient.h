@@ -16,6 +16,7 @@
 #include <optional>
 #include <vector>
 #include <coroutine>
+#include <utility>
 #include "galay-mysql/base/MysqlError.h"
 #include "galay-mysql/base/MysqlLog.h"
 #include "galay-mysql/base/MysqlValue.h"
@@ -47,6 +48,57 @@ using MysqlVoidResult = std::expected<void, MysqlError>;
 
 // 前向声明
 class AsyncMysqlClient;
+
+class AsyncMysqlClientBuilder
+{
+public:
+    AsyncMysqlClientBuilder& scheduler(IOScheduler* scheduler)
+    {
+        m_scheduler = scheduler;
+        return *this;
+    }
+
+    AsyncMysqlClientBuilder& config(AsyncMysqlConfig config)
+    {
+        m_config = std::move(config);
+        return *this;
+    }
+
+    AsyncMysqlClientBuilder& sendTimeout(std::chrono::milliseconds timeout)
+    {
+        m_config.send_timeout = timeout;
+        return *this;
+    }
+
+    AsyncMysqlClientBuilder& recvTimeout(std::chrono::milliseconds timeout)
+    {
+        m_config.recv_timeout = timeout;
+        return *this;
+    }
+
+    AsyncMysqlClientBuilder& bufferSize(size_t size)
+    {
+        m_config.buffer_size = size;
+        return *this;
+    }
+
+    AsyncMysqlClientBuilder& resultRowReserveHint(size_t hint)
+    {
+        m_config.result_row_reserve_hint = hint;
+        return *this;
+    }
+
+    AsyncMysqlClient build() const;
+
+    AsyncMysqlConfig buildConfig() const
+    {
+        return m_config;
+    }
+
+private:
+    IOScheduler* m_scheduler = nullptr;
+    AsyncMysqlConfig m_config = AsyncMysqlConfig::noTimeout();
+};
 
 // ======================== MysqlConnectAwaitable ========================
 
@@ -550,6 +602,11 @@ private:
 
     MysqlLoggerPtr m_logger;
 };
+
+inline galay::mysql::AsyncMysqlClient galay::mysql::AsyncMysqlClientBuilder::build() const
+{
+    return AsyncMysqlClient(m_scheduler, m_config);
+}
 
 } // namespace galay::mysql
 
