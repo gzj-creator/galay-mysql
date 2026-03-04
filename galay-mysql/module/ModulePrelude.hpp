@@ -125,6 +125,9 @@
 #if __has_include("galay-mysql/async/AsyncMysqlClient.h")
 #include "galay-mysql/async/AsyncMysqlClient.h"
 #endif
+#if __has_include("galay-mysql/async/MysqlBufferProvider.h")
+#include "galay-mysql/async/MysqlBufferProvider.h"
+#endif
 #if __has_include("galay-mysql/async/MysqlConnectionPool.h")
 #include "galay-mysql/async/MysqlConnectionPool.h"
 #endif
@@ -143,8 +146,8 @@
 #if __has_include("galay-mysql/module/ModulePrelude.hpp")
 #include "galay-mysql/module/ModulePrelude.hpp"
 #endif
-#if __has_include("galay-mysql/protocol/Connection.h")
-#include "galay-mysql/protocol/Connection.h"
+#if __has_include("galay-mysql/protocol/Builder.h")
+#include "galay-mysql/protocol/Builder.h"
 #endif
 #if __has_include("galay-mysql/protocol/MysqlAuth.h")
 #include "galay-mysql/protocol/MysqlAuth.h"

@@ -5,23 +5,30 @@ function(add_mysql_example target_name source_file)
     galay_mysql_apply_cxx(${target_name})
 endfunction()
 
-# include 版本
-add_mysql_example(E1-AsyncQuery-Include include/E1-AsyncQuery.cc)
-add_mysql_example(E2-SyncQuery-Include include/E2-SyncQuery.cc)
-add_mysql_example(E3-AsyncPool-Include include/E3-AsyncPool.cc)
-add_mysql_example(E4-SyncPreparedTx-Include include/E4-SyncPreparedTx.cc)
+# include 版本（自动扫描 examples/include/*.cc）
+file(GLOB include_example_sources CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/*.cc"
+)
+list(SORT include_example_sources)
+foreach(example_source IN LISTS include_example_sources)
+    get_filename_component(example_name "${example_source}" NAME_WE)
+    file(RELATIVE_PATH example_rel "${CMAKE_CURRENT_SOURCE_DIR}" "${example_source}")
+    add_mysql_example("${example_name}-Include" "${example_rel}")
+endforeach()
 
-# import 版本（按工具链支持自动开启）
+# import 版本（按工具链支持自动开启，自动扫描 examples/import/*.cc）
 if(GALAY_MYSQL_BUILD_MODULE_EXAMPLES_EFFECTIVE)
-    add_mysql_example(E1-AsyncQuery-Import import/E1-AsyncQuery.cc)
-    add_mysql_example(E2-SyncQuery-Import import/E2-SyncQuery.cc)
-    add_mysql_example(E3-AsyncPool-Import import/E3-AsyncPool.cc)
-    add_mysql_example(E4-SyncPreparedTx-Import import/E4-SyncPreparedTx.cc)
-
-    if(GALAY_MYSQL_IMPORT_COMPILE_OPTIONS)
-        target_compile_options(E1-AsyncQuery-Import PRIVATE ${GALAY_MYSQL_IMPORT_COMPILE_OPTIONS})
-        target_compile_options(E2-SyncQuery-Import PRIVATE ${GALAY_MYSQL_IMPORT_COMPILE_OPTIONS})
-        target_compile_options(E3-AsyncPool-Import PRIVATE ${GALAY_MYSQL_IMPORT_COMPILE_OPTIONS})
-        target_compile_options(E4-SyncPreparedTx-Import PRIVATE ${GALAY_MYSQL_IMPORT_COMPILE_OPTIONS})
-    endif()
+    file(GLOB import_example_sources CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/import/*.cc"
+    )
+    list(SORT import_example_sources)
+    foreach(example_source IN LISTS import_example_sources)
+        get_filename_component(example_name "${example_source}" NAME_WE)
+        file(RELATIVE_PATH example_rel "${CMAKE_CURRENT_SOURCE_DIR}" "${example_source}")
+        set(target_name "${example_name}-Import")
+        add_mysql_example("${target_name}" "${example_rel}")
+        if(GALAY_MYSQL_IMPORT_COMPILE_OPTIONS)
+            target_compile_options("${target_name}" PRIVATE ${GALAY_MYSQL_IMPORT_COMPILE_OPTIONS})
+        endif()
+    endforeach()
 endif()

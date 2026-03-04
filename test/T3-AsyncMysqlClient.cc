@@ -119,6 +119,45 @@ Coroutine testAsyncMysql(IOScheduler* scheduler, AsyncTestState* state, mysql_te
         }
     }
 
+    // PIPELINE
+    std::cout << "Testing PIPELINE..." << std::endl;
+    {
+        std::vector<std::string_view> sqls;
+        sqls.reserve(3);
+        sqls.emplace_back("SELECT 11");
+        sqls.emplace_back("SELECT 22");
+        sqls.emplace_back("SELECT 33");
+
+        auto r = co_await client.pipeline(std::span<const std::string_view>(sqls.data(), sqls.size()));
+        if (!r) {
+            state->fail("PIPELINE failed: " + r.error().message());
+            co_return;
+        }
+        if (!r->has_value()) {
+            state->fail("PIPELINE awaitable resumed without value");
+            co_return;
+        }
+
+        const auto& results = r->value();
+        if (results.size() != sqls.size()) {
+            state->fail("PIPELINE result count mismatch");
+            co_return;
+        }
+
+        if (results[0].rowCount() != 1 || results[1].rowCount() != 1 || results[2].rowCount() != 1) {
+            state->fail("PIPELINE row count mismatch");
+            co_return;
+        }
+
+        const auto v1 = results[0].row(0).getInt64(0, -1);
+        const auto v2 = results[1].row(0).getInt64(0, -1);
+        const auto v3 = results[2].row(0).getInt64(0, -1);
+        if (v1 != 11 || v2 != 22 || v3 != 33) {
+            state->fail("PIPELINE result value mismatch");
+            co_return;
+        }
+    }
+
     // UPDATE
     std::cout << "Testing UPDATE..." << std::endl;
     {

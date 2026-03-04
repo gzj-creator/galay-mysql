@@ -1,36 +1,34 @@
 #ifndef GALAY_MYSQL_SYNC_CLIENT_H
 #define GALAY_MYSQL_SYNC_CLIENT_H
 
+#include "galay-mysql/base/MysqlConfig.h"
 #include "galay-mysql/base/MysqlError.h"
 #include "galay-mysql/base/MysqlValue.h"
-#include "galay-mysql/base/MysqlConfig.h"
-#include "galay-mysql/protocol/MysqlProtocol.h"
+#include "galay-mysql/protocol/Builder.h"
 #include "galay-mysql/protocol/MysqlAuth.h"
-#include "galay-mysql/protocol/Connection.h"
-#include <string>
-#include <expected>
-#include <vector>
-#include <optional>
+#include "galay-mysql/protocol/MysqlProtocol.h"
+
+#include <galay-kernel/common/Buffer.h>
+
 #include <cstdint>
+#include <expected>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <sys/uio.h>
+#include <utility>
+#include <vector>
 
 namespace galay::mysql
 {
 
 using MysqlResult = std::expected<MysqlResultSet, MysqlError>;
 using MysqlVoidResult = std::expected<void, MysqlError>;
+using MysqlBatchResult = std::expected<std::vector<MysqlResultSet>, MysqlError>;
 
 /**
- * @brief 同步MySQL客户端
- * @details 使用阻塞socket的同步MySQL客户端
- *
- * @code
- * MysqlClient session;
- * auto config = MysqlConfig::create("127.0.0.1", 3306, "root", "password", "test_db");
- * auto result = session.connect(config);
- * if (!result) { return; }
- * auto query_result = session.query("SELECT * FROM users");
- * session.close();
- * @endcode
+ * @brief 同步MySQL客户端（readv/writev + ring buffer）
  */
 class MysqlClient
 {
@@ -53,6 +51,8 @@ public:
     // ======================== 查询 ========================
 
     MysqlResult query(const std::string& sql);
+    MysqlBatchResult batch(std::span<const protocol::MysqlCommandView> commands);
+    MysqlBatchResult pipeline(std::span<const std::string_view> sqls);
 
     // ======================== 预处理语句 ========================
 
@@ -82,20 +82,31 @@ public:
     // ======================== 连接管理 ========================
 
     void close();
-    bool isConnected() const { return m_connection.isConnected(); }
+    bool isConnected() const { return m_connected; }
 
 private:
-    /**
-     * @brief 接收并解析完整的查询结果
-     */
-    MysqlResult receiveResultSet();
+    using Packet = std::pair<uint8_t, std::string>;
 
-    /**
-     * @brief 执行简单命令并检查OK/ERR
-     */
+    static constexpr size_t kRecvBufferCapacity = 256 * 1024;
+
+    MysqlVoidResult connectSocket(const std::string& host, uint16_t port, uint32_t timeout_ms);
+    void closeSocket() noexcept;
+
+    MysqlVoidResult sendAll(std::string_view data);
+    MysqlVoidResult sendAllv(std::span<const struct iovec> iovecs);
+
+    MysqlVoidResult recvIntoRingBuffer();
+    std::expected<std::optional<Packet>, MysqlError> tryExtractPacket();
+    std::expected<Packet, MysqlError> recvPacket();
+
+    MysqlResult receiveResultSet();
     MysqlVoidResult executeSimple(const std::string& sql);
 
-    protocol::Connection m_connection;
+    int m_socket_fd;
+    bool m_connected;
+    galay::kernel::RingBuffer m_recv_ring_buffer;
+    std::string m_parse_scratch;
+
     protocol::MysqlParser m_parser;
     protocol::MysqlEncoder m_encoder;
     uint32_t m_server_capabilities = 0;

@@ -64,6 +64,19 @@ int main()
         }
     }
 
+    std::cout << "Testing PIPELINE batch..." << std::endl;
+    protocol::MysqlCommandBuilder pipeline_builder;
+    pipeline_builder.reserve(3, 3 * (protocol::MYSQL_PACKET_HEADER_SIZE + 1 + 16));
+    pipeline_builder.appendQuery("SELECT 1");
+    pipeline_builder.appendQuery("SELECT 2");
+    pipeline_builder.appendQuery("SELECT 3");
+    auto pipeline_result = session.batch(pipeline_builder.commands());
+    if (!pipeline_result) {
+        std::cerr << "PIPELINE batch failed: " << pipeline_result.error().message() << std::endl;
+    } else {
+        std::cout << "  Pipeline responses: " << pipeline_result->size() << std::endl;
+    }
+
     // 清理
     session.query("DROP TABLE IF EXISTS galay_sync_test");
     session.close();

@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cassert>
 #include <cstring>
+#include "galay-mysql/protocol/Builder.h"
 #include "galay-mysql/protocol/MysqlProtocol.h"
 #include "galay-mysql/protocol/MysqlPacket.h"
 
@@ -164,6 +165,52 @@ void testEncoder()
     std::cout << "  PASSED" << std::endl;
 }
 
+void testCommandBuilder()
+{
+    std::cout << "Testing command builder..." << std::endl;
+
+    MysqlCommandBuilder builder;
+    builder.reserve(3, 128);
+    builder.appendQuery("SELECT 1");
+    builder.appendPing();
+    builder.appendInitDb("test_db");
+
+    assert(builder.size() == 3);
+    assert(!builder.empty());
+
+    const auto views = builder.commands();
+    assert(views.size() == 3);
+    assert(views[0].kind == MysqlCommandKind::Query);
+    assert(views[1].kind == MysqlCommandKind::Ping);
+    assert(views[2].kind == MysqlCommandKind::InitDb);
+
+    const std::string& encoded = builder.encoded();
+    size_t offset = 0;
+
+    auto assertCommand = [&](CommandType cmd, std::string_view payload) {
+        assert(offset + MYSQL_PACKET_HEADER_SIZE <= encoded.size());
+        const uint32_t packet_len = readUint24(encoded.data() + offset);
+        assert(packet_len == payload.size() + 1);
+        assert(static_cast<uint8_t>(encoded[offset + 4]) == static_cast<uint8_t>(cmd));
+        if (!payload.empty()) {
+            assert(encoded.substr(offset + 5, payload.size()) == payload);
+        }
+        offset += MYSQL_PACKET_HEADER_SIZE + packet_len;
+    };
+
+    assertCommand(CommandType::COM_QUERY, "SELECT 1");
+    assertCommand(CommandType::COM_PING, "");
+    assertCommand(CommandType::COM_INIT_DB, "test_db");
+    assert(offset == encoded.size());
+
+    auto released = builder.release();
+    assert(builder.empty());
+    assert(released.expected_responses == 3);
+    assert(!released.encoded.empty());
+
+    std::cout << "  PASSED" << std::endl;
+}
+
 void testOkPacketParse()
 {
     std::cout << "Testing OK packet parse..." << std::endl;
@@ -220,6 +267,7 @@ int main()
     testLenEncString();
     testPacketHeader();
     testEncoder();
+    testCommandBuilder();
     testOkPacketParse();
     testErrPacketParse();
 

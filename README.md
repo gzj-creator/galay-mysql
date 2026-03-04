@@ -256,6 +256,7 @@ GALAY_MYSQL_DB=test \
 - `E2` 同步查询
 - `E3` 异步连接池
 - `E4` 同步预处理 + 事务
+- `E5` 异步 Pipeline
 
 构建并运行 include 版本：
 
@@ -264,6 +265,9 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGALAY_MYSQL_BUILD_EXAMPLES=ON
 cmake --build build --parallel
 ./build/examples/E1-AsyncQuery-Include
 ./build/examples/E2-SyncQuery-Include
+./build/examples/E3-AsyncPool-Include
+./build/examples/E4-SyncPreparedTx-Include
+./build/examples/E5-AsyncPipeline-Include
 ```
 
 尝试构建 import 版本（支持时）：
@@ -275,6 +279,16 @@ cmake -S . -B build-import \
   -DGALAY_MYSQL_ENABLE_IMPORT_COMPILATION=ON \
   -DGALAY_MYSQL_BUILD_MODULE_EXAMPLES=ON
 cmake --build build-import --parallel
+```
+
+运行 import 版本：
+
+```bash
+./build-import/examples/E1-AsyncQuery-Import
+./build-import/examples/E2-SyncQuery-Import
+./build-import/examples/E3-AsyncPool-Import
+./build-import/examples/E4-SyncPreparedTx-Import
+./build-import/examples/E5-AsyncPipeline-Import
 ```
 
 ## 文档

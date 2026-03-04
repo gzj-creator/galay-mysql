@@ -6,7 +6,6 @@
 #include <galay-kernel/kernel/Coroutine.h>
 #include <galay-kernel/kernel/Timeout.hpp>
 #include <galay-kernel/common/Host.hpp>
-#include <galay-kernel/common/Buffer.h>
 #include <galay-kernel/common/Error.h>
 #include <memory>
 #include <string>
@@ -23,7 +22,9 @@
 #include "galay-mysql/base/MysqlConfig.h"
 #include "galay-mysql/protocol/MysqlProtocol.h"
 #include "galay-mysql/protocol/MysqlAuth.h"
+#include "galay-mysql/protocol/Builder.h"
 #include "AsyncMysqlConfig.h"
+#include "MysqlBufferProvider.h"
 
 namespace galay::mysql
 {
@@ -34,10 +35,9 @@ using galay::kernel::Coroutine;
 using galay::kernel::Host;
 using galay::kernel::IOError;
 using galay::kernel::IPType;
-using galay::kernel::RingBuffer;
-using galay::kernel::SendAwaitable;
 using galay::kernel::ReadvAwaitable;
 using galay::kernel::ReadvIOContext;
+using galay::kernel::WritevIOContext;
 using galay::kernel::ConnectAwaitable;
 using galay::kernel::ConnectIOContext;
 using galay::kernel::CustomAwaitable;
@@ -82,6 +82,12 @@ public:
         return *this;
     }
 
+    AsyncMysqlClientBuilder& bufferProvider(std::shared_ptr<MysqlBufferProvider> provider)
+    {
+        m_buffer_provider = std::move(provider);
+        return *this;
+    }
+
     AsyncMysqlClientBuilder& resultRowReserveHint(size_t hint)
     {
         m_config.result_row_reserve_hint = hint;
@@ -98,6 +104,7 @@ public:
 private:
     IOScheduler* m_scheduler = nullptr;
     AsyncMysqlConfig m_config = AsyncMysqlConfig::noTimeout();
+    std::shared_ptr<MysqlBufferProvider> m_buffer_provider;
 };
 
 // ======================== MysqlConnectAwaitable ========================
@@ -139,7 +146,7 @@ public:
         MysqlConnectAwaitable* m_owner;
     };
 
-    class ProtocolAuthSendAwaitable : public SendAwaitable
+    class ProtocolAuthSendAwaitable : public WritevIOContext
     {
     public:
         explicit ProtocolAuthSendAwaitable(MysqlConnectAwaitable* owner);
@@ -151,7 +158,11 @@ public:
 #endif
 
     private:
+        void syncSendIovecs();
+
         MysqlConnectAwaitable* m_owner;
+        const char* m_buffer = nullptr;
+        size_t m_length = 0;
     };
 
     class ProtocolAuthResultRecvAwaitable : public ReadvIOContext
@@ -220,7 +231,7 @@ private:
 class MysqlQueryAwaitable : public CustomAwaitable, public galay::kernel::TimeoutSupport<MysqlQueryAwaitable>
 {
 public:
-    class ProtocolSendAwaitable : public SendAwaitable
+    class ProtocolSendAwaitable : public WritevIOContext
     {
     public:
         explicit ProtocolSendAwaitable(MysqlQueryAwaitable* owner);
@@ -232,10 +243,12 @@ public:
 #endif
 
     private:
-        void syncSendWindow();
+        void syncSendIovecs();
         bool handleSendResult();
 
         MysqlQueryAwaitable* m_owner;
+        const char* m_buffer = nullptr;
+        size_t m_length = 0;
     };
 
     class ProtocolRecvAwaitable : public ReadvIOContext
@@ -250,7 +263,7 @@ public:
 #endif
 
     private:
-        bool prepareReadIovecs();
+        bool prepareRecvWindow();
         bool tryParseAndCheckDone();
         bool handleReadResult();
 
@@ -326,7 +339,7 @@ public:
         std::vector<MysqlField> column_fields;
     };
 
-    class ProtocolSendAwaitable : public SendAwaitable
+    class ProtocolSendAwaitable : public WritevIOContext
     {
     public:
         explicit ProtocolSendAwaitable(MysqlPrepareAwaitable* owner);
@@ -338,10 +351,12 @@ public:
 #endif
 
     private:
-        void syncSendWindow();
+        void syncSendIovecs();
         bool handleSendResult();
 
         MysqlPrepareAwaitable* m_owner;
+        const char* m_buffer = nullptr;
+        size_t m_length = 0;
     };
 
     class ProtocolRecvAwaitable : public ReadvIOContext
@@ -356,7 +371,7 @@ public:
 #endif
 
     private:
-        bool prepareReadIovecs();
+        bool prepareRecvWindow();
         bool tryParseAndCheckDone();
         bool handleReadResult();
 
@@ -420,7 +435,7 @@ public:
 class MysqlStmtExecuteAwaitable : public CustomAwaitable, public galay::kernel::TimeoutSupport<MysqlStmtExecuteAwaitable>
 {
 public:
-    class ProtocolSendAwaitable : public SendAwaitable
+    class ProtocolSendAwaitable : public WritevIOContext
     {
     public:
         explicit ProtocolSendAwaitable(MysqlStmtExecuteAwaitable* owner);
@@ -432,10 +447,12 @@ public:
 #endif
 
     private:
-        void syncSendWindow();
+        void syncSendIovecs();
         bool handleSendResult();
 
         MysqlStmtExecuteAwaitable* m_owner;
+        const char* m_buffer = nullptr;
+        size_t m_length = 0;
     };
 
     class ProtocolRecvAwaitable : public ReadvIOContext
@@ -450,7 +467,7 @@ public:
 #endif
 
     private:
-        bool prepareReadIovecs();
+        bool prepareRecvWindow();
         bool tryParseAndCheckDone();
         bool handleReadResult();
 
@@ -504,6 +521,116 @@ public:
     std::expected<std::optional<MysqlResultSet>, galay::kernel::IOError> m_result;
 };
 
+// ======================== MysqlPipelineAwaitable ========================
+
+/**
+ * @brief MySQL Pipeline等待体
+ * @details 批量发送编码后的COM_QUERY包并统一接收/解析响应
+ */
+class MysqlPipelineAwaitable : public CustomAwaitable, public galay::kernel::TimeoutSupport<MysqlPipelineAwaitable>
+{
+public:
+    class ProtocolSendAwaitable : public WritevIOContext
+    {
+    public:
+        explicit ProtocolSendAwaitable(MysqlPipelineAwaitable* owner);
+
+#ifdef USE_IOURING
+        bool handleComplete(struct io_uring_cqe* cqe, GHandle handle) override;
+#else
+        bool handleComplete(GHandle handle) override;
+#endif
+
+        void rebind(MysqlPipelineAwaitable* owner);
+
+    private:
+        void refillIovWindow();
+        int pendingIovCount();
+        bool advanceAfterWrite(size_t sent_bytes);
+
+        MysqlPipelineAwaitable* m_owner;
+        size_t m_iov_cursor = 0;
+        size_t m_next_command_index = 0;
+    };
+
+    class ProtocolRecvAwaitable : public ReadvIOContext
+    {
+    public:
+        explicit ProtocolRecvAwaitable(MysqlPipelineAwaitable* owner);
+
+#ifdef USE_IOURING
+        bool handleComplete(struct io_uring_cqe* cqe, GHandle handle) override;
+#else
+        bool handleComplete(GHandle handle) override;
+#endif
+
+        void rebind(MysqlPipelineAwaitable* owner);
+
+    private:
+        bool prepareRecvWindow();
+        bool tryParseAndCheckDone();
+        bool handleReadResult();
+
+        MysqlPipelineAwaitable* m_owner;
+    };
+
+    MysqlPipelineAwaitable(AsyncMysqlClient& client,
+                           std::span<const protocol::MysqlCommandView> commands);
+
+    bool await_ready() const noexcept { return false; }
+    using CustomAwaitable::await_suspend;
+    std::expected<std::optional<std::vector<MysqlResultSet>>, MysqlError> await_resume();
+
+    bool isInvalid() const { return m_lifecycle == Lifecycle::Invalid; }
+
+private:
+    enum class Lifecycle {
+        Invalid,
+        Running,
+        Done
+    };
+
+    enum class State {
+        ReceivingHeader,
+        ReceivingColumns,
+        ReceivingColumnEof,
+        ReceivingRows,
+    };
+
+    struct EncodedSlice {
+        size_t offset = 0;
+        size_t length = 0;
+    };
+
+    void initTaskQueue();
+    void resetCurrentResult();
+    void finalizeCurrentResult();
+    void reset() noexcept;
+    void setError(MysqlError error) noexcept;
+    void setSendError(const IOError& io_error) noexcept;
+    void setRecvError(const IOError& io_error) noexcept;
+    std::expected<bool, MysqlError> tryParseFromRingBuffer();
+
+    AsyncMysqlClient& m_client;
+    size_t m_expected_results;
+    std::string m_encoded_buffer;
+    std::vector<EncodedSlice> m_encoded_slices;
+    Lifecycle m_lifecycle;
+    State m_state;
+    std::vector<MysqlResultSet> m_results;
+    MysqlResultSet m_current_result;
+    uint64_t m_column_count;
+    size_t m_columns_received;
+
+    ProtocolSendAwaitable m_send_awaitable;
+    ProtocolRecvAwaitable m_recv_awaitable;
+    std::optional<MysqlError> m_chain_error;
+    std::string m_parse_scratch;
+
+public:
+    std::expected<std::optional<std::vector<MysqlResultSet>>, galay::kernel::IOError> m_result;
+};
+
 // ======================== AsyncMysqlClient ========================
 
 /**
@@ -527,7 +654,9 @@ public:
 class AsyncMysqlClient
 {
 public:
-    AsyncMysqlClient(IOScheduler* scheduler, AsyncMysqlConfig config = AsyncMysqlConfig::noTimeout());
+    AsyncMysqlClient(IOScheduler* scheduler,
+                     AsyncMysqlConfig config = AsyncMysqlConfig::noTimeout(),
+                     std::shared_ptr<MysqlBufferProvider> buffer_provider = nullptr);
 
     AsyncMysqlClient(AsyncMysqlClient&& other) noexcept;
     AsyncMysqlClient& operator=(AsyncMysqlClient&& other) noexcept;
@@ -547,6 +676,8 @@ public:
     // ======================== 查询 ========================
 
     MysqlQueryAwaitable query(std::string_view sql);
+    MysqlPipelineAwaitable batch(std::span<const protocol::MysqlCommandView> commands);
+    MysqlPipelineAwaitable pipeline(std::span<const std::string_view> sqls);
 
     // ======================== 预处理语句 ========================
 
@@ -577,7 +708,9 @@ public:
     // ======================== 内部访问 ========================
 
     TcpSocket& socket() { return m_socket; }
-    RingBuffer& ringBuffer() { return m_ring_buffer; }
+    MysqlBufferHandle& ringBuffer() { return m_ring_buffer; }
+    MysqlBufferProvider& bufferProvider() { return m_ring_buffer.provider(); }
+    const MysqlBufferProvider& bufferProvider() const { return m_ring_buffer.provider(); }
     protocol::MysqlParser& parser() { return m_parser; }
     protocol::MysqlEncoder& encoder() { return m_encoder; }
     uint32_t serverCapabilities() const { return m_server_capabilities; }
@@ -590,6 +723,7 @@ private:
     friend class MysqlQueryAwaitable;
     friend class MysqlPrepareAwaitable;
     friend class MysqlStmtExecuteAwaitable;
+    friend class MysqlPipelineAwaitable;
 
     bool m_is_closed = false;
     TcpSocket m_socket;
@@ -597,7 +731,7 @@ private:
     protocol::MysqlParser m_parser;
     protocol::MysqlEncoder m_encoder;
     AsyncMysqlConfig m_config;
-    RingBuffer m_ring_buffer;
+    MysqlBufferHandle m_ring_buffer;
     uint32_t m_server_capabilities = 0;
 
     MysqlLoggerPtr m_logger;
@@ -605,7 +739,7 @@ private:
 
 inline galay::mysql::AsyncMysqlClient galay::mysql::AsyncMysqlClientBuilder::build() const
 {
-    return AsyncMysqlClient(m_scheduler, m_config);
+    return AsyncMysqlClient(m_scheduler, m_config, m_buffer_provider);
 }
 
 } // namespace galay::mysql
