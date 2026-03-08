@@ -144,6 +144,7 @@ public:
 
     private:
         MysqlConnectAwaitable* m_owner;
+        std::vector<struct iovec> m_iovecs;
     };
 
     class ProtocolAuthSendAwaitable : public WritevIOContext
@@ -159,8 +160,10 @@ public:
 
     private:
         void syncSendIovecs();
+        void syncContextIovecs();
 
         MysqlConnectAwaitable* m_owner;
+        std::vector<struct iovec> m_iovecs;
         const char* m_buffer = nullptr;
         size_t m_length = 0;
     };
@@ -178,6 +181,7 @@ public:
 
     private:
         MysqlConnectAwaitable* m_owner;
+        std::vector<struct iovec> m_iovecs;
     };
 
     MysqlConnectAwaitable(AsyncMysqlClient& client, MysqlConfig config);
@@ -245,8 +249,10 @@ public:
     private:
         void syncSendIovecs();
         bool handleSendResult();
+        void syncContextIovecs();
 
         MysqlQueryAwaitable* m_owner;
+        std::vector<struct iovec> m_iovecs;
         const char* m_buffer = nullptr;
         size_t m_length = 0;
     };
@@ -266,8 +272,10 @@ public:
         bool prepareRecvWindow();
         bool tryParseAndCheckDone();
         bool handleReadResult();
+        void syncContextIovecs();
 
         MysqlQueryAwaitable* m_owner;
+        std::vector<struct iovec> m_iovecs;
     };
 
     MysqlQueryAwaitable(AsyncMysqlClient& client, std::string_view sql);
@@ -353,8 +361,10 @@ public:
     private:
         void syncSendIovecs();
         bool handleSendResult();
+        void syncContextIovecs();
 
         MysqlPrepareAwaitable* m_owner;
+        std::vector<struct iovec> m_iovecs;
         const char* m_buffer = nullptr;
         size_t m_length = 0;
     };
@@ -374,8 +384,10 @@ public:
         bool prepareRecvWindow();
         bool tryParseAndCheckDone();
         bool handleReadResult();
+        void syncContextIovecs();
 
         MysqlPrepareAwaitable* m_owner;
+        std::vector<struct iovec> m_iovecs;
     };
 
     MysqlPrepareAwaitable(AsyncMysqlClient& client, std::string_view sql);
@@ -449,8 +461,10 @@ public:
     private:
         void syncSendIovecs();
         bool handleSendResult();
+        void syncContextIovecs();
 
         MysqlStmtExecuteAwaitable* m_owner;
+        std::vector<struct iovec> m_iovecs;
         const char* m_buffer = nullptr;
         size_t m_length = 0;
     };
@@ -470,8 +484,10 @@ public:
         bool prepareRecvWindow();
         bool tryParseAndCheckDone();
         bool handleReadResult();
+        void syncContextIovecs();
 
         MysqlStmtExecuteAwaitable* m_owner;
+        std::vector<struct iovec> m_iovecs;
     };
 
     MysqlStmtExecuteAwaitable(AsyncMysqlClient& client, std::string encoded_cmd);
@@ -547,10 +563,12 @@ public:
         void refillIovWindow();
         int pendingIovCount();
         bool advanceAfterWrite(size_t sent_bytes);
+        void syncContextIovecs();
 
         MysqlPipelineAwaitable* m_owner;
         size_t m_iov_cursor = 0;
         size_t m_next_command_index = 0;
+        std::vector<struct iovec> m_iovecs;
     };
 
     class ProtocolRecvAwaitable : public ReadvIOContext
@@ -570,8 +588,10 @@ public:
         bool prepareRecvWindow();
         bool tryParseAndCheckDone();
         bool handleReadResult();
+        void syncContextIovecs();
 
         MysqlPipelineAwaitable* m_owner;
+        std::vector<struct iovec> m_iovecs;
     };
 
     MysqlPipelineAwaitable(AsyncMysqlClient& client,

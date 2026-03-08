@@ -2,6 +2,7 @@
 #include "galay-mysql/base/MysqlLog.h"
 #include "galay-mysql/protocol/Builder.h"
 #include <concepts>
+#include <array>
 #include <sys/uio.h>
 #include <utility>
 
@@ -152,6 +153,12 @@ constexpr int kPipelineWritevMaxIov = IOV_MAX > 0 ? IOV_MAX : 1024;
 constexpr int kPipelineWritevMaxIov = 1024;
 #endif
 
+std::array<struct iovec, 1>& emptyIovecs()
+{
+    static std::array<struct iovec, 1> empty{};
+    return empty;
+}
+
 }
 
 // ======================== MysqlConnectAwaitable ========================
@@ -207,10 +214,11 @@ bool MysqlConnectAwaitable::ProtocolConnectAwaitable::handleComplete(GHandle han
 #endif
 
 MysqlConnectAwaitable::ProtocolHandshakeRecvAwaitable::ProtocolHandshakeRecvAwaitable(MysqlConnectAwaitable* owner)
-    : ReadvIOContext({})
+    : ReadvIOContext(detail::emptyIovecs(), 0)
     , m_owner(owner)
 {
     m_iovecs.reserve(2);
+    ReadvIOContext::m_iovecs = std::span<const struct iovec>(m_iovecs.data(), m_iovecs.size());
 }
 
 #ifdef USE_IOURING
@@ -229,6 +237,7 @@ bool MysqlConnectAwaitable::ProtocolHandshakeRecvAwaitable::handleComplete(struc
         m_owner->setError(MysqlError(MYSQL_ERROR_RECV, "No writable ring buffer space while reading handshake"));
         return true;
     }
+    ReadvIOContext::m_iovecs = std::span<const struct iovec>(m_iovecs.data(), m_iovecs.size());
 
     if (cqe == nullptr) {
         return false;
@@ -260,6 +269,7 @@ bool MysqlConnectAwaitable::ProtocolHandshakeRecvAwaitable::handleComplete(GHand
             m_owner->setError(MysqlError(MYSQL_ERROR_RECV, "No writable ring buffer space while reading handshake"));
             return true;
         }
+        ReadvIOContext::m_iovecs = std::span<const struct iovec>(m_iovecs.data(), m_iovecs.size());
 
         if (!ReadvIOContext::handleComplete(handle)) {
             return false;
@@ -280,10 +290,16 @@ bool MysqlConnectAwaitable::ProtocolHandshakeRecvAwaitable::handleComplete(GHand
 #endif
 
 MysqlConnectAwaitable::ProtocolAuthSendAwaitable::ProtocolAuthSendAwaitable(MysqlConnectAwaitable* owner)
-    : WritevIOContext({})
+    : WritevIOContext(detail::emptyIovecs(), 0)
     , m_owner(owner)
 {
     m_iovecs.reserve(1);
+    syncContextIovecs();
+}
+
+void MysqlConnectAwaitable::ProtocolAuthSendAwaitable::syncContextIovecs()
+{
+    WritevIOContext::m_iovecs = std::span<const struct iovec>(m_iovecs.data(), m_iovecs.size());
 }
 
 void MysqlConnectAwaitable::ProtocolAuthSendAwaitable::syncSendIovecs()
@@ -291,9 +307,11 @@ void MysqlConnectAwaitable::ProtocolAuthSendAwaitable::syncSendIovecs()
     detail::syncSendWindow(m_owner->m_auth_packet, m_owner->m_sent, m_buffer, m_length);
     m_iovecs.clear();
     if (m_length == 0 || m_buffer == nullptr) {
+        syncContextIovecs();
         return;
     }
     m_iovecs.push_back(iovec{const_cast<char*>(m_buffer), m_length});
+    syncContextIovecs();
 }
 
 #ifdef USE_IOURING
@@ -355,10 +373,11 @@ bool MysqlConnectAwaitable::ProtocolAuthSendAwaitable::handleComplete(GHandle ha
 #endif
 
 MysqlConnectAwaitable::ProtocolAuthResultRecvAwaitable::ProtocolAuthResultRecvAwaitable(MysqlConnectAwaitable* owner)
-    : ReadvIOContext({})
+    : ReadvIOContext(detail::emptyIovecs(), 0)
     , m_owner(owner)
 {
     m_iovecs.reserve(2);
+    ReadvIOContext::m_iovecs = std::span<const struct iovec>(m_iovecs.data(), m_iovecs.size());
 }
 
 #ifdef USE_IOURING
@@ -377,6 +396,7 @@ bool MysqlConnectAwaitable::ProtocolAuthResultRecvAwaitable::handleComplete(stru
         m_owner->setError(MysqlError(MYSQL_ERROR_RECV, "No writable ring buffer space while reading auth result"));
         return true;
     }
+    ReadvIOContext::m_iovecs = std::span<const struct iovec>(m_iovecs.data(), m_iovecs.size());
 
     if (cqe == nullptr) {
         return false;
@@ -408,6 +428,7 @@ bool MysqlConnectAwaitable::ProtocolAuthResultRecvAwaitable::handleComplete(GHan
             m_owner->setError(MysqlError(MYSQL_ERROR_RECV, "No writable ring buffer space while reading auth result"));
             return true;
         }
+        ReadvIOContext::m_iovecs = std::span<const struct iovec>(m_iovecs.data(), m_iovecs.size());
 
         if (!ReadvIOContext::handleComplete(handle)) {
             return false;
@@ -631,10 +652,16 @@ std::expected<std::optional<bool>, MysqlError> MysqlConnectAwaitable::await_resu
 // ======================== MysqlQueryAwaitable ========================
 
 MysqlQueryAwaitable::ProtocolSendAwaitable::ProtocolSendAwaitable(MysqlQueryAwaitable* owner)
-    : WritevIOContext({})
+    : WritevIOContext(detail::emptyIovecs(), 0)
     , m_owner(owner)
 {
     m_iovecs.reserve(1);
+    syncContextIovecs();
+}
+
+void MysqlQueryAwaitable::ProtocolSendAwaitable::syncContextIovecs()
+{
+    WritevIOContext::m_iovecs = std::span<const struct iovec>(m_iovecs.data(), m_iovecs.size());
 }
 
 void MysqlQueryAwaitable::ProtocolSendAwaitable::syncSendIovecs()
@@ -642,9 +669,11 @@ void MysqlQueryAwaitable::ProtocolSendAwaitable::syncSendIovecs()
     detail::syncSendWindow(m_owner->m_encoded_cmd, m_owner->m_sent, m_buffer, m_length);
     m_iovecs.clear();
     if (m_length == 0 || m_buffer == nullptr) {
+        syncContextIovecs();
         return;
     }
     m_iovecs.push_back(iovec{const_cast<char*>(m_buffer), m_length});
+    syncContextIovecs();
 }
 
 bool MysqlQueryAwaitable::ProtocolSendAwaitable::handleSendResult()
@@ -703,18 +732,26 @@ bool MysqlQueryAwaitable::ProtocolSendAwaitable::handleComplete(GHandle handle)
 #endif
 
 MysqlQueryAwaitable::ProtocolRecvAwaitable::ProtocolRecvAwaitable(MysqlQueryAwaitable* owner)
-    : ReadvIOContext({})
+    : ReadvIOContext(detail::emptyIovecs(), 0)
     , m_owner(owner)
 {
     m_iovecs.reserve(2);
+    syncContextIovecs();
+}
+
+void MysqlQueryAwaitable::ProtocolRecvAwaitable::syncContextIovecs()
+{
+    ReadvIOContext::m_iovecs = std::span<const struct iovec>(m_iovecs.data(), m_iovecs.size());
 }
 
 bool MysqlQueryAwaitable::ProtocolRecvAwaitable::prepareRecvWindow()
 {
     if (!detail::prepareRecvWindow(m_owner->m_client.m_ring_buffer, m_iovecs)) {
         m_owner->setError(MysqlError(MYSQL_ERROR_RECV, "No writable ring buffer space"));
+        syncContextIovecs();
         return false;
     }
+    syncContextIovecs();
     return true;
 }
 
@@ -1015,10 +1052,16 @@ std::expected<std::optional<MysqlResultSet>, MysqlError> MysqlQueryAwaitable::aw
 // ======================== MysqlPrepareAwaitable ========================
 
 MysqlPrepareAwaitable::ProtocolSendAwaitable::ProtocolSendAwaitable(MysqlPrepareAwaitable* owner)
-    : WritevIOContext({})
+    : WritevIOContext(detail::emptyIovecs(), 0)
     , m_owner(owner)
 {
     m_iovecs.reserve(1);
+    syncContextIovecs();
+}
+
+void MysqlPrepareAwaitable::ProtocolSendAwaitable::syncContextIovecs()
+{
+    WritevIOContext::m_iovecs = std::span<const struct iovec>(m_iovecs.data(), m_iovecs.size());
 }
 
 void MysqlPrepareAwaitable::ProtocolSendAwaitable::syncSendIovecs()
@@ -1026,9 +1069,11 @@ void MysqlPrepareAwaitable::ProtocolSendAwaitable::syncSendIovecs()
     detail::syncSendWindow(m_owner->m_encoded_cmd, m_owner->m_sent, m_buffer, m_length);
     m_iovecs.clear();
     if (m_length == 0 || m_buffer == nullptr) {
+        syncContextIovecs();
         return;
     }
     m_iovecs.push_back(iovec{const_cast<char*>(m_buffer), m_length});
+    syncContextIovecs();
 }
 
 bool MysqlPrepareAwaitable::ProtocolSendAwaitable::handleSendResult()
@@ -1088,18 +1133,26 @@ bool MysqlPrepareAwaitable::ProtocolSendAwaitable::handleComplete(GHandle handle
 #endif
 
 MysqlPrepareAwaitable::ProtocolRecvAwaitable::ProtocolRecvAwaitable(MysqlPrepareAwaitable* owner)
-    : ReadvIOContext({})
+    : ReadvIOContext(detail::emptyIovecs(), 0)
     , m_owner(owner)
 {
     m_iovecs.reserve(2);
+    syncContextIovecs();
+}
+
+void MysqlPrepareAwaitable::ProtocolRecvAwaitable::syncContextIovecs()
+{
+    ReadvIOContext::m_iovecs = std::span<const struct iovec>(m_iovecs.data(), m_iovecs.size());
 }
 
 bool MysqlPrepareAwaitable::ProtocolRecvAwaitable::prepareRecvWindow()
 {
     if (!detail::prepareRecvWindow(m_owner->m_client.m_ring_buffer, m_iovecs)) {
         m_owner->setError(MysqlError(MYSQL_ERROR_RECV, "No writable ring buffer space"));
+        syncContextIovecs();
         return false;
     }
+    syncContextIovecs();
     return true;
 }
 
@@ -1373,10 +1426,16 @@ MysqlPrepareAwaitable::await_resume()
 // ======================== MysqlStmtExecuteAwaitable ========================
 
 MysqlStmtExecuteAwaitable::ProtocolSendAwaitable::ProtocolSendAwaitable(MysqlStmtExecuteAwaitable* owner)
-    : WritevIOContext({})
+    : WritevIOContext(detail::emptyIovecs(), 0)
     , m_owner(owner)
 {
     m_iovecs.reserve(1);
+    syncContextIovecs();
+}
+
+void MysqlStmtExecuteAwaitable::ProtocolSendAwaitable::syncContextIovecs()
+{
+    WritevIOContext::m_iovecs = std::span<const struct iovec>(m_iovecs.data(), m_iovecs.size());
 }
 
 void MysqlStmtExecuteAwaitable::ProtocolSendAwaitable::syncSendIovecs()
@@ -1384,9 +1443,11 @@ void MysqlStmtExecuteAwaitable::ProtocolSendAwaitable::syncSendIovecs()
     detail::syncSendWindow(m_owner->m_encoded_cmd, m_owner->m_sent, m_buffer, m_length);
     m_iovecs.clear();
     if (m_length == 0 || m_buffer == nullptr) {
+        syncContextIovecs();
         return;
     }
     m_iovecs.push_back(iovec{const_cast<char*>(m_buffer), m_length});
+    syncContextIovecs();
 }
 
 bool MysqlStmtExecuteAwaitable::ProtocolSendAwaitable::handleSendResult()
@@ -1446,18 +1507,26 @@ bool MysqlStmtExecuteAwaitable::ProtocolSendAwaitable::handleComplete(GHandle ha
 #endif
 
 MysqlStmtExecuteAwaitable::ProtocolRecvAwaitable::ProtocolRecvAwaitable(MysqlStmtExecuteAwaitable* owner)
-    : ReadvIOContext({})
+    : ReadvIOContext(detail::emptyIovecs(), 0)
     , m_owner(owner)
 {
     m_iovecs.reserve(2);
+    syncContextIovecs();
+}
+
+void MysqlStmtExecuteAwaitable::ProtocolRecvAwaitable::syncContextIovecs()
+{
+    ReadvIOContext::m_iovecs = std::span<const struct iovec>(m_iovecs.data(), m_iovecs.size());
 }
 
 bool MysqlStmtExecuteAwaitable::ProtocolRecvAwaitable::prepareRecvWindow()
 {
     if (!detail::prepareRecvWindow(m_owner->m_client.m_ring_buffer, m_iovecs)) {
         m_owner->setError(MysqlError(MYSQL_ERROR_RECV, "No writable ring buffer space"));
+        syncContextIovecs();
         return false;
     }
+    syncContextIovecs();
     return true;
 }
 
@@ -1741,10 +1810,21 @@ std::expected<std::optional<MysqlResultSet>, MysqlError> MysqlStmtExecuteAwaitab
 // ======================== MysqlPipelineAwaitable ========================
 
 MysqlPipelineAwaitable::ProtocolSendAwaitable::ProtocolSendAwaitable(MysqlPipelineAwaitable* owner)
-    : WritevIOContext({})
+    : WritevIOContext(detail::emptyIovecs(), 0)
     , m_owner(owner)
 {
     rebind(owner);
+}
+
+void MysqlPipelineAwaitable::ProtocolSendAwaitable::syncContextIovecs()
+{
+    if (m_iov_cursor >= m_iovecs.size()) {
+        WritevIOContext::m_iovecs = std::span<const struct iovec>();
+        return;
+    }
+    WritevIOContext::m_iovecs = std::span<const struct iovec>(
+        m_iovecs.data() + m_iov_cursor,
+        m_iovecs.size() - m_iov_cursor);
 }
 
 void MysqlPipelineAwaitable::ProtocolSendAwaitable::rebind(MysqlPipelineAwaitable* owner)
@@ -1754,6 +1834,7 @@ void MysqlPipelineAwaitable::ProtocolSendAwaitable::rebind(MysqlPipelineAwaitabl
     m_next_command_index = 0;
     m_iovecs.clear();
     if (!m_owner) {
+        syncContextIovecs();
         return;
     }
 
@@ -1763,6 +1844,7 @@ void MysqlPipelineAwaitable::ProtocolSendAwaitable::rebind(MysqlPipelineAwaitabl
                                     : static_cast<size_t>(detail::kPipelineWritevMaxIov);
     m_iovecs.reserve(reserve_hint);
     refillIovWindow();
+    syncContextIovecs();
 }
 
 void MysqlPipelineAwaitable::ProtocolSendAwaitable::refillIovWindow()
@@ -1770,6 +1852,7 @@ void MysqlPipelineAwaitable::ProtocolSendAwaitable::refillIovWindow()
     if (!m_owner) {
         m_iovecs.clear();
         m_iov_cursor = 0;
+        syncContextIovecs();
         return;
     }
 
@@ -1792,6 +1875,7 @@ void MysqlPipelineAwaitable::ProtocolSendAwaitable::refillIovWindow()
         iov.iov_len = encoded_slice.length;
         m_iovecs.push_back(iov);
     }
+    syncContextIovecs();
 }
 
 int MysqlPipelineAwaitable::ProtocolSendAwaitable::pendingIovCount()
@@ -1808,9 +1892,11 @@ int MysqlPipelineAwaitable::ProtocolSendAwaitable::pendingIovCount()
     }
 
     if (m_iov_cursor >= m_iovecs.size()) {
+        syncContextIovecs();
         return 0;
     }
 
+    syncContextIovecs();
     return static_cast<int>(m_iovecs.size() - m_iov_cursor);
 }
 
@@ -1827,6 +1913,7 @@ bool MysqlPipelineAwaitable::ProtocolSendAwaitable::advanceAfterWrite(size_t sen
         if (remaining < iov.iov_len) {
             iov.iov_base = static_cast<char*>(iov.iov_base) + remaining;
             iov.iov_len -= remaining;
+            syncContextIovecs();
             return true;
         }
 
@@ -1842,6 +1929,7 @@ bool MysqlPipelineAwaitable::ProtocolSendAwaitable::advanceAfterWrite(size_t sen
     if (m_iov_cursor >= m_iovecs.size()) {
         refillIovWindow();
     }
+    syncContextIovecs();
     return true;
 }
 
@@ -1919,17 +2007,23 @@ bool MysqlPipelineAwaitable::ProtocolSendAwaitable::handleComplete(GHandle handl
 #endif
 
 MysqlPipelineAwaitable::ProtocolRecvAwaitable::ProtocolRecvAwaitable(MysqlPipelineAwaitable* owner)
-    : ReadvIOContext({})
+    : ReadvIOContext(detail::emptyIovecs(), 0)
     , m_owner(owner)
 {
     m_iovecs.reserve(2);
     rebind(owner);
 }
 
+void MysqlPipelineAwaitable::ProtocolRecvAwaitable::syncContextIovecs()
+{
+    ReadvIOContext::m_iovecs = std::span<const struct iovec>(m_iovecs.data(), m_iovecs.size());
+}
+
 void MysqlPipelineAwaitable::ProtocolRecvAwaitable::rebind(MysqlPipelineAwaitable* owner)
 {
     m_owner = owner;
     m_iovecs.clear();
+    syncContextIovecs();
 }
 
 bool MysqlPipelineAwaitable::ProtocolRecvAwaitable::prepareRecvWindow()
@@ -1937,8 +2031,10 @@ bool MysqlPipelineAwaitable::ProtocolRecvAwaitable::prepareRecvWindow()
     if (!detail::prepareRecvWindow(m_owner->m_client.m_ring_buffer, m_iovecs)) {
         m_owner->setError(MysqlError(MYSQL_ERROR_RECV,
                                      "No writable ring buffer space while receiving pipeline response"));
+        syncContextIovecs();
         return false;
     }
+    syncContextIovecs();
     return true;
 }
 

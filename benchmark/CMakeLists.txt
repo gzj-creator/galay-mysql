@@ -5,6 +5,6 @@ function(add_mysql_benchmark target_name source_file)
     galay_mysql_apply_cxx(${target_name})
 endfunction()
 
-add_mysql_benchmark(B1-SyncPressure B1-SyncPressure.cc)
-add_mysql_benchmark(B2-AsyncPressure B2-AsyncPressure.cc)
+add_mysql_benchmark(B1-SyncPressure B1-sync_pressure.cc)
+add_mysql_benchmark(B2-AsyncPressure B2-async_pressure.cc)
 
