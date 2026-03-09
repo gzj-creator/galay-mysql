@@ -1,6 +1,9 @@
 #include <iostream>
 #include <cassert>
 #include <iomanip>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/rsa.h>
 #include "galay-mysql/protocol/MysqlAuth.h"
 
 using namespace galay::mysql::protocol;
@@ -75,6 +78,70 @@ void testCachingSha2Auth()
     std::cout << "  PASSED" << std::endl;
 }
 
+void testCachingSha2FullAuth()
+{
+    std::cout << "Testing caching_sha2_password full auth..." << std::endl;
+
+    EVP_PKEY_CTX* keygen_ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
+    assert(keygen_ctx != nullptr);
+    assert(EVP_PKEY_keygen_init(keygen_ctx) > 0);
+    assert(EVP_PKEY_CTX_set_rsa_keygen_bits(keygen_ctx, 2048) > 0);
+
+    EVP_PKEY* private_key = nullptr;
+    assert(EVP_PKEY_keygen(keygen_ctx, &private_key) > 0);
+    EVP_PKEY_CTX_free(keygen_ctx);
+    assert(private_key != nullptr);
+
+    BIO* pub_bio = BIO_new(BIO_s_mem());
+    assert(pub_bio != nullptr);
+    assert(PEM_write_bio_PUBKEY(pub_bio, private_key) == 1);
+
+    BUF_MEM* pub_mem = nullptr;
+    BIO_get_mem_ptr(pub_bio, &pub_mem);
+    assert(pub_mem != nullptr);
+    std::string public_key_pem(pub_mem->data, pub_mem->length);
+    BIO_free(pub_bio);
+
+    const std::string password = "GalayPass_123!";
+    const std::string salt = "12345678901234567890";
+
+    auto encrypted = AuthPlugin::cachingSha2FullAuth(password, salt, public_key_pem);
+    assert(encrypted.has_value());
+    assert(!encrypted->empty());
+
+    EVP_PKEY_CTX* decrypt_ctx = EVP_PKEY_CTX_new(private_key, nullptr);
+    assert(decrypt_ctx != nullptr);
+    assert(EVP_PKEY_decrypt_init(decrypt_ctx) > 0);
+    assert(EVP_PKEY_CTX_set_rsa_padding(decrypt_ctx, RSA_PKCS1_OAEP_PADDING) > 0);
+
+    size_t decrypted_len = 0;
+    assert(EVP_PKEY_decrypt(decrypt_ctx,
+                            nullptr,
+                            &decrypted_len,
+                            reinterpret_cast<const unsigned char*>(encrypted->data()),
+                            encrypted->size()) > 0);
+
+    std::string decrypted(decrypted_len, '\0');
+    assert(EVP_PKEY_decrypt(decrypt_ctx,
+                            reinterpret_cast<unsigned char*>(decrypted.data()),
+                            &decrypted_len,
+                            reinterpret_cast<const unsigned char*>(encrypted->data()),
+                            encrypted->size()) > 0);
+    decrypted.resize(decrypted_len);
+
+    EVP_PKEY_CTX_free(decrypt_ctx);
+    EVP_PKEY_free(private_key);
+
+    std::string expected = password;
+    expected.push_back('\0');
+    for (size_t index = 0; index < expected.size(); ++index) {
+        expected[index] ^= salt[index % salt.size()];
+    }
+
+    assert(decrypted == expected);
+    std::cout << "  PASSED" << std::endl;
+}
+
 int main()
 {
     std::cout << "=== T2: MySQL Auth Tests ===" << std::endl;
@@ -84,6 +151,7 @@ int main()
     testXorStrings();
     testNativePasswordAuth();
     testCachingSha2Auth();
+    testCachingSha2FullAuth();
 
     std::cout << "\nAll auth tests PASSED!" << std::endl;
     return 0;

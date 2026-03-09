@@ -193,6 +193,13 @@ public:
     bool isInvalid() const { return m_lifecycle == Lifecycle::Invalid; }
 
 private:
+    enum class AuthStage {
+        InitialResponse,
+        AwaitFastAuthResult,
+        AwaitPublicKey,
+        AwaitFinalResult
+    };
+
     enum class Lifecycle {
         Invalid,
         Running,
@@ -213,6 +220,7 @@ private:
 
     // 握手数据
     protocol::HandshakeV10 m_handshake;
+    AuthStage m_auth_stage;
     std::string m_auth_packet;
     size_t m_sent;
     bool m_connected = false;

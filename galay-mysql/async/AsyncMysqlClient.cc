@@ -147,6 +147,21 @@ inline std::string buildSingleCommandPacket(protocol::CommandType cmd,
     return std::move(builder.release().encoded);
 }
 
+inline std::string encodeRawPacket(std::string_view payload, uint8_t sequence_id)
+{
+    std::string packet;
+    packet.reserve(protocol::MYSQL_PACKET_HEADER_SIZE + payload.size());
+    const uint32_t payload_len = static_cast<uint32_t>(payload.size());
+    packet.push_back(static_cast<char>(payload_len & 0xFF));
+    packet.push_back(static_cast<char>((payload_len >> 8) & 0xFF));
+    packet.push_back(static_cast<char>((payload_len >> 16) & 0xFF));
+    packet.push_back(static_cast<char>(sequence_id));
+    if (!payload.empty()) {
+        packet.append(payload.data(), payload.size());
+    }
+    return packet;
+}
+
 #ifdef IOV_MAX
 constexpr int kPipelineWritevMaxIov = IOV_MAX > 0 ? IOV_MAX : 1024;
 #else
@@ -454,6 +469,7 @@ MysqlConnectAwaitable::MysqlConnectAwaitable(AsyncMysqlClient& client, MysqlConf
     , m_config(std::move(config))
     , m_lifecycle(Lifecycle::Running)
     , m_handshake()
+    , m_auth_stage(AuthStage::InitialResponse)
     , m_auth_packet()
     , m_sent(0)
     , m_connected(false)
@@ -467,12 +483,17 @@ MysqlConnectAwaitable::MysqlConnectAwaitable(AsyncMysqlClient& client, MysqlConf
     addTask(IOEventType::READV, &m_handshake_recv_awaitable);
     addTask(IOEventType::SEND, &m_auth_send_awaitable);
     addTask(IOEventType::READV, &m_auth_result_recv_awaitable);
+    addTask(IOEventType::SEND, &m_auth_send_awaitable);
+    addTask(IOEventType::READV, &m_auth_result_recv_awaitable);
+    addTask(IOEventType::SEND, &m_auth_send_awaitable);
+    addTask(IOEventType::READV, &m_auth_result_recv_awaitable);
 }
 
 void MysqlConnectAwaitable::reset() noexcept
 {
     m_lifecycle = Lifecycle::Invalid;
     m_handshake = protocol::HandshakeV10{};
+    m_auth_stage = AuthStage::InitialResponse;
     m_auth_packet.clear();
     m_sent = 0;
     m_connected = false;
@@ -567,6 +588,7 @@ std::expected<bool, MysqlError> MysqlConnectAwaitable::parseHandshakeFromRingBuf
         resp.auth_plugin_name = "mysql_native_password";
     }
 
+    m_auth_stage = AuthStage::InitialResponse;
     m_auth_packet = m_client.m_encoder.encodeHandshakeResponse(resp, pkt->sequence_id + 1);
     m_sent = 0;
     return true;
@@ -599,6 +621,33 @@ std::expected<bool, MysqlError> MysqlConnectAwaitable::parseAuthResultFromRingBu
         const uint8_t first_byte = static_cast<uint8_t>(pkt->payload[0]);
         m_client.m_ring_buffer.consume(consumed);
 
+        if (m_auth_stage == AuthStage::AwaitPublicKey) {
+            if (first_byte == 0xFF) {
+                auto err = m_client.m_parser.parseErr(pkt->payload, pkt->payload_len, m_client.m_server_capabilities);
+                if (err) {
+                    return std::unexpected(MysqlError(MYSQL_ERROR_AUTH, err->error_code, err->error_message));
+                }
+                return std::unexpected(MysqlError(MYSQL_ERROR_AUTH, "Public key request failed"));
+            }
+
+            std::string_view public_key(pkt->payload, pkt->payload_len);
+            if (!public_key.empty() && static_cast<uint8_t>(public_key.front()) == 0x01) {
+                public_key.remove_prefix(1);
+            }
+
+            auto encrypted = protocol::AuthPlugin::cachingSha2FullAuth(m_config.password,
+                                                                       m_handshake.auth_plugin_data,
+                                                                       public_key);
+            if (!encrypted) {
+                return std::unexpected(MysqlError(MYSQL_ERROR_AUTH, encrypted.error()));
+            }
+
+            m_auth_packet = detail::encodeRawPacket(*encrypted, pkt->sequence_id + 1);
+            m_sent = 0;
+            m_auth_stage = AuthStage::AwaitFinalResult;
+            return true;
+        }
+
         if (first_byte == 0x00) {
             m_connected = true;
             m_lifecycle = Lifecycle::Done;
@@ -616,7 +665,17 @@ std::expected<bool, MysqlError> MysqlConnectAwaitable::parseAuthResultFromRingBu
 
         if (first_byte == 0x01) {
             if (pkt->payload_len == 2 && static_cast<uint8_t>(pkt->payload[1]) == 0x03) {
+                m_auth_stage = AuthStage::AwaitFastAuthResult;
                 continue;
+            }
+            if (pkt->payload_len == 2 &&
+                static_cast<uint8_t>(pkt->payload[1]) == 0x04 &&
+                m_handshake.auth_plugin_name == "caching_sha2_password") {
+                static const std::string kPublicKeyRequest(1, '\x02');
+                m_auth_packet = detail::encodeRawPacket(kPublicKeyRequest, pkt->sequence_id + 1);
+                m_sent = 0;
+                m_auth_stage = AuthStage::AwaitPublicKey;
+                return true;
             }
             return std::unexpected(MysqlError(MYSQL_ERROR_AUTH,
                                               "Full authentication not supported, use mysql_native_password"));

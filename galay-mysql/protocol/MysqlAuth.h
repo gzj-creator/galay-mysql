@@ -1,7 +1,9 @@
 #ifndef GALAY_MYSQL_AUTH_H
 #define GALAY_MYSQL_AUTH_H
 
+#include <expected>
 #include <string>
+#include <string_view>
 
 namespace galay::mysql::protocol
 {
@@ -29,6 +31,18 @@ public:
      * @return 认证数据（32字节）
      */
     static std::string cachingSha2Auth(const std::string& password, const std::string& salt);
+
+    /**
+     * @brief caching_sha2_password 全量认证（RSA 公钥加密）
+     * @details password + '\0' 与 handshake salt 异或后，用服务端 RSA 公钥做 OAEP 加密
+     * @param password 明文密码
+     * @param salt 服务器发送的 salt
+     * @param pem_public_key 服务端返回的 PEM 公钥
+     * @return 加密后的认证数据
+     */
+    static std::expected<std::string, std::string> cachingSha2FullAuth(const std::string& password,
+                                                                       const std::string& salt,
+                                                                       std::string_view pem_public_key);
 
     /**
      * @brief SHA1哈希

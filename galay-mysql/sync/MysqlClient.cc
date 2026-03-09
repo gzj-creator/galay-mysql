@@ -41,6 +41,21 @@ inline MysqlError makeSysError(MysqlErrorType type, const std::string& prefix)
     return MysqlError(type, prefix + ": " + std::string(strerror(errno)));
 }
 
+inline std::string encodeRawPacket(std::string_view payload, uint8_t sequence_id)
+{
+    std::string packet;
+    packet.reserve(protocol::MYSQL_PACKET_HEADER_SIZE + payload.size());
+    const uint32_t payload_len = static_cast<uint32_t>(payload.size());
+    packet.push_back(static_cast<char>(payload_len & 0xFF));
+    packet.push_back(static_cast<char>((payload_len >> 8) & 0xFF));
+    packet.push_back(static_cast<char>((payload_len >> 16) & 0xFF));
+    packet.push_back(static_cast<char>(sequence_id));
+    if (!payload.empty()) {
+        packet.append(payload.data(), payload.size());
+    }
+    return packet;
+}
+
 } // namespace
 
 MysqlClient::MysqlClient()
@@ -294,6 +309,84 @@ MysqlVoidResult MysqlClient::connect(const MysqlConfig& config)
             }
             return {};
         }
+
+        if (auth_payload.size() == 2 &&
+            static_cast<uint8_t>(auth_payload[1]) == 0x04 &&
+            hs->auth_plugin_name == "caching_sha2_password") {
+            const std::string public_key_request(1, '\x02');
+            auto request_packet = encodeRawPacket(public_key_request, static_cast<uint8_t>(auth_seq + 1));
+            auto request_result = sendAll(request_packet);
+            if (!request_result) {
+                return std::unexpected(request_result.error());
+            }
+
+            auto public_key_result = recvPacket();
+            if (!public_key_result) {
+                return std::unexpected(public_key_result.error());
+            }
+            auto& [public_key_seq, public_key_payload] = public_key_result.value();
+
+            if (public_key_payload.empty()) {
+                return std::unexpected(MysqlError(MYSQL_ERROR_AUTH, "Empty public key response"));
+            }
+            if (static_cast<uint8_t>(public_key_payload[0]) == 0xFF) {
+                auto err = m_parser.parseErr(public_key_payload.data(),
+                                             public_key_payload.size(),
+                                             m_server_capabilities);
+                if (err) {
+                    return std::unexpected(MysqlError(MYSQL_ERROR_AUTH,
+                                                      err->error_code,
+                                                      err->error_message));
+                }
+                return std::unexpected(MysqlError(MYSQL_ERROR_AUTH,
+                                                  "Public key request failed"));
+            }
+
+            std::string_view public_key_data = public_key_payload;
+            if (!public_key_data.empty() &&
+                static_cast<uint8_t>(public_key_data.front()) == 0x01) {
+                public_key_data.remove_prefix(1);
+            }
+
+            auto encrypted = protocol::AuthPlugin::cachingSha2FullAuth(config.password,
+                                                                       hs->auth_plugin_data,
+                                                                       public_key_data);
+            if (!encrypted) {
+                return std::unexpected(MysqlError(MYSQL_ERROR_AUTH, encrypted.error()));
+            }
+
+            auto encrypted_packet = encodeRawPacket(*encrypted,
+                                                    static_cast<uint8_t>(public_key_seq + 1));
+            auto encrypted_result = sendAll(encrypted_packet);
+            if (!encrypted_result) {
+                return std::unexpected(encrypted_result.error());
+            }
+
+            auto final_result = recvPacket();
+            if (!final_result) {
+                return std::unexpected(final_result.error());
+            }
+
+            auto& [final_seq, final_payload] = final_result.value();
+            (void)final_seq;
+
+            if (!final_payload.empty() && static_cast<uint8_t>(final_payload[0]) == 0x00) {
+                return {};
+            }
+            if (!final_payload.empty() && static_cast<uint8_t>(final_payload[0]) == 0xFF) {
+                auto err = m_parser.parseErr(final_payload.data(),
+                                             final_payload.size(),
+                                             m_server_capabilities);
+                if (err) {
+                    return std::unexpected(MysqlError(MYSQL_ERROR_AUTH,
+                                                      err->error_code,
+                                                      err->error_message));
+                }
+                return std::unexpected(MysqlError(MYSQL_ERROR_AUTH, "Authentication failed"));
+            }
+            return std::unexpected(MysqlError(MYSQL_ERROR_AUTH, "Unexpected full auth response"));
+        }
+
         return std::unexpected(MysqlError(MYSQL_ERROR_AUTH, "Full auth not supported"));
     }
 
