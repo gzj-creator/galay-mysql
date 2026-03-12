@@ -3,6 +3,14 @@ find_package(OpenSSL REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(Threads REQUIRED)
 
+if(TARGET spdlog::spdlog_header_only)
+    set(GALAY_MYSQL_SPDLOG_TARGET spdlog::spdlog_header_only)
+elseif(TARGET spdlog::spdlog)
+    set(GALAY_MYSQL_SPDLOG_TARGET spdlog::spdlog)
+else()
+    message(FATAL_ERROR "spdlog package did not provide spdlog::spdlog or spdlog::spdlog_header_only")
+endif()
+
 file(GLOB SOURCES "base/*.cc" "async/*.cc" "protocol/*.cc" "sync/*.cc")
 
 if(NOT TARGET galay-kernel::galay-kernel)
@@ -20,8 +28,8 @@ target_link_libraries(${PROJECT_NAME}
     PUBLIC galay-kernel::galay-kernel
     PUBLIC OpenSSL::SSL
     PUBLIC OpenSSL::Crypto
-    PUBLIC spdlog::spdlog
     PUBLIC Threads::Threads
+    PUBLIC ${GALAY_MYSQL_SPDLOG_TARGET}
 )
 
 target_include_directories(${PROJECT_NAME}
@@ -78,6 +86,9 @@ if(GALAY_MYSQL_IMPORT_COMPILATION_ENABLED AND GALAY_MYSQL_INSTALL_MODULE_INTERFA
     )
 endif()
 
+set(GALAY_MYSQL_CMAKE_PACKAGE_DIR "lib/cmake/GalayMysql")
+set(GALAY_MYSQL_CMAKE_COMPAT_PACKAGE_DIR "lib/cmake/galay-mysql")
+
 # 安装头文件
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
     DESTINATION include/galay-mysql
@@ -104,26 +115,19 @@ endif()
 install(EXPORT galay-mysql-targets
     FILE GalayMysqlTargets.cmake
     NAMESPACE galay-mysql::
-    DESTINATION lib/cmake/GalayMysql
-)
-
-install(EXPORT galay-mysql-targets
-    FILE GalayMysqlTargets.cmake
-    NAMESPACE galay-mysql::
-    DESTINATION lib/cmake/galay-mysql
+    DESTINATION ${GALAY_MYSQL_CMAKE_PACKAGE_DIR}
 )
 
 include(CMakePackageConfigHelpers)
 configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/GalayMysqlConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfig.cmake"
-    INSTALL_DESTINATION lib/cmake/GalayMysql
+    INSTALL_DESTINATION ${GALAY_MYSQL_CMAKE_PACKAGE_DIR}
 )
-
-configure_package_config_file(
+configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/galay-mysqlConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/galay-mysqlConfig.cmake"
-    INSTALL_DESTINATION lib/cmake/galay-mysql
+    @ONLY
 )
 
 set(_galay_mysql_package_version "${PROJECT_VERSION}")
@@ -139,14 +143,11 @@ write_basic_package_version_file(
 
 install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/galay-mysqlConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfigVersion.cmake"
-    DESTINATION lib/cmake/GalayMysql
+    DESTINATION ${GALAY_MYSQL_CMAKE_PACKAGE_DIR}
 )
-
 install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/galay-mysqlConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfigVersion.cmake"
-    DESTINATION lib/cmake/galay-mysql
+    DESTINATION ${GALAY_MYSQL_CMAKE_COMPAT_PACKAGE_DIR}
 )

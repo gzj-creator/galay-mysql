@@ -94,6 +94,10 @@ int main()
 {
     std::cout << "=== T5: Connection Pool Tests ===" << std::endl;
     const auto db_cfg = mysql_test::loadMysqlTestConfig();
+    if (const int skip_code = mysql_test::requireMysqlTestConfigOrSkip(db_cfg, "T5-ConnectionPool");
+        skip_code != 0) {
+        return skip_code;
+    }
     mysql_test::printMysqlTestConfig(db_cfg);
 
     try {

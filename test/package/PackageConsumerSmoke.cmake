@@ -1,63 +1,104 @@
 cmake_minimum_required(VERSION 3.20)
 
-if(NOT DEFINED SOURCE_DIR OR NOT DEFINED BINARY_DIR)
-    message(FATAL_ERROR "SOURCE_DIR and BINARY_DIR are required.")
-endif()
+foreach(required_var
+        IN ITEMS
+        GALAY_MYSQL_SOURCE_DIR
+        GALAY_MYSQL_BINARY_DIR
+        GALAY_MYSQL_CMAKE_GENERATOR
+        GALAY_MYSQL_CXX_COMPILER
+        GALAY_MYSQL_CXX_STANDARD)
+    if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
+        message(FATAL_ERROR "PackageConsumerSmoke requires `${required_var}`.")
+    endif()
+endforeach()
 
-set(SMOKE_ROOT "${BINARY_DIR}/_package_smoke")
-set(INSTALL_PREFIX "${SMOKE_ROOT}/install")
-set(CONSUMER_SOURCE_DIR "${SOURCE_DIR}/test/package/consumer")
-set(CONSUMER_BUILD_DIR "${SMOKE_ROOT}/consumer-build")
+set(smoke_root "${GALAY_MYSQL_BINARY_DIR}/test/package-smoke")
+set(prefix_dir "${smoke_root}/prefix")
+set(consumer_source_dir "${smoke_root}/consumer")
+set(consumer_build_dir "${smoke_root}/consumer-build")
 
-file(REMOVE_RECURSE "${SMOKE_ROOT}")
-file(MAKE_DIRECTORY "${SMOKE_ROOT}")
+file(REMOVE_RECURSE "${smoke_root}")
+file(MAKE_DIRECTORY "${consumer_source_dir}")
 
-execute_process(
-    COMMAND "${CMAKE_COMMAND}" --install "${BINARY_DIR}" --prefix "${INSTALL_PREFIX}"
-    RESULT_VARIABLE install_rv
-    OUTPUT_VARIABLE install_out
-    ERROR_VARIABLE install_err
+file(WRITE "${consumer_source_dir}/main.cc"
+    "#include \"galay-mysql/async/AsyncMysqlClient.h\"\n"
+    "int main() { return 0; }\n")
+
+configure_file(
+    "${GALAY_MYSQL_SOURCE_DIR}/test/package/CMakeLists.txt.in"
+    "${consumer_source_dir}/CMakeLists.txt"
+    @ONLY
 )
-if(NOT install_rv EQUAL 0)
-    message(FATAL_ERROR
-        "Package smoke failed during install step.\n"
-        "Command: ${CMAKE_COMMAND} --install ${BINARY_DIR} --prefix ${INSTALL_PREFIX}\n"
-        "Output:\n${install_out}\n${install_err}"
-    )
-endif()
 
-set(_consumer_prefix_path "${INSTALL_PREFIX}")
-if(DEFINED DEPENDENCY_PREFIX_HINTS AND NOT "${DEPENDENCY_PREFIX_HINTS}" STREQUAL "")
-    string(REPLACE ";" "|" _dep_prefix_log "${DEPENDENCY_PREFIX_HINTS}")
-    message(STATUS "Package smoke dependency prefix hints: ${_dep_prefix_log}")
-    list(APPEND _consumer_prefix_path ${DEPENDENCY_PREFIX_HINTS})
-endif()
-
-execute_process(
-    COMMAND "${CMAKE_COMMAND}"
-        -S "${CONSUMER_SOURCE_DIR}"
-        -B "${CONSUMER_BUILD_DIR}"
-        "-DCMAKE_PREFIX_PATH=${_consumer_prefix_path}"
-    RESULT_VARIABLE configure_rv
-    OUTPUT_VARIABLE configure_out
-    ERROR_VARIABLE configure_err
-)
-if(NOT configure_rv EQUAL 0)
-    message(FATAL_ERROR
-        "Package smoke failed during consumer configure step.\n"
-        "Output:\n${configure_out}\n${configure_err}"
-    )
+set(install_command
+    "${CMAKE_COMMAND}" --install "${GALAY_MYSQL_BINARY_DIR}" --prefix "${prefix_dir}")
+if(DEFINED GALAY_MYSQL_INSTALL_CONFIG AND NOT "${GALAY_MYSQL_INSTALL_CONFIG}" STREQUAL "")
+    list(APPEND install_command --config "${GALAY_MYSQL_INSTALL_CONFIG}")
 endif()
 
 execute_process(
-    COMMAND "${CMAKE_COMMAND}" --build "${CONSUMER_BUILD_DIR}" --parallel
-    RESULT_VARIABLE build_rv
-    OUTPUT_VARIABLE build_out
-    ERROR_VARIABLE build_err
+    COMMAND ${install_command}
+    RESULT_VARIABLE install_result
+    OUTPUT_VARIABLE install_stdout
+    ERROR_VARIABLE install_stderr
 )
-if(NOT build_rv EQUAL 0)
+
+if(NOT install_result EQUAL 0)
     message(FATAL_ERROR
-        "Package smoke failed during consumer build step.\n"
-        "Output:\n${build_out}\n${build_err}"
-    )
+        "Failed to install galay-mysql for package smoke test.\n"
+        "stdout:\n${install_stdout}\n"
+        "stderr:\n${install_stderr}")
+endif()
+
+set(package_prefix_path "${prefix_dir}")
+if(DEFINED GALAY_MYSQL_PACKAGE_CMAKE_PREFIX_PATH
+   AND NOT "${GALAY_MYSQL_PACKAGE_CMAKE_PREFIX_PATH}" STREQUAL "")
+    set(package_prefix_path
+        "${prefix_dir};${GALAY_MYSQL_PACKAGE_CMAKE_PREFIX_PATH}")
+endif()
+
+set(configure_command
+    "${CMAKE_COMMAND}"
+    -S "${consumer_source_dir}"
+    -B "${consumer_build_dir}"
+    -G "${GALAY_MYSQL_CMAKE_GENERATOR}"
+    "-DCMAKE_CXX_COMPILER=${GALAY_MYSQL_CXX_COMPILER}"
+    "-DCMAKE_CXX_STANDARD=${GALAY_MYSQL_CXX_STANDARD}"
+    "-DCMAKE_PREFIX_PATH=${package_prefix_path}")
+
+if(DEFINED GALAY_MYSQL_BUILD_TYPE AND NOT "${GALAY_MYSQL_BUILD_TYPE}" STREQUAL "")
+    list(APPEND configure_command "-DCMAKE_BUILD_TYPE=${GALAY_MYSQL_BUILD_TYPE}")
+endif()
+
+execute_process(
+    COMMAND ${configure_command}
+    RESULT_VARIABLE configure_result
+    OUTPUT_VARIABLE configure_stdout
+    ERROR_VARIABLE configure_stderr
+)
+
+if(NOT configure_result EQUAL 0)
+    message(FATAL_ERROR
+        "Failed to configure external consumer via find_package(GalayMysql).\n"
+        "stdout:\n${configure_stdout}\n"
+        "stderr:\n${configure_stderr}")
+endif()
+
+set(build_command "${CMAKE_COMMAND}" --build "${consumer_build_dir}")
+if(DEFINED GALAY_MYSQL_INSTALL_CONFIG AND NOT "${GALAY_MYSQL_INSTALL_CONFIG}" STREQUAL "")
+    list(APPEND build_command --config "${GALAY_MYSQL_INSTALL_CONFIG}")
+endif()
+
+execute_process(
+    COMMAND ${build_command}
+    RESULT_VARIABLE build_result
+    OUTPUT_VARIABLE build_stdout
+    ERROR_VARIABLE build_stderr
+)
+
+if(NOT build_result EQUAL 0)
+    message(FATAL_ERROR
+        "Failed to build external consumer linked against installed galay-mysql.\n"
+        "stdout:\n${build_stdout}\n"
+        "stderr:\n${build_stderr}")
 endif()

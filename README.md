@@ -58,8 +58,7 @@ cmake -S . -B build \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_TESTING=ON \
   -DGALAY_MYSQL_BUILD_EXAMPLES=ON \
-  -DGALAY_MYSQL_BUILD_BENCHMARKS=ON \
-  -DCMAKE_PREFIX_PATH=/Users/gongzhijie/Desktop/projects/git/.galay-prefix/latest
+  -DGALAY_MYSQL_BUILD_BENCHMARKS=ON
 cmake --build build --parallel
 ```
 
@@ -84,7 +83,6 @@ cmake --build build --parallel
 ```bash
 cmake --install build --prefix /tmp/galay-mysql-install
 ```
-
 外部项目消费方式与当前安装导出保持一致：
 
 ```cmake
@@ -104,6 +102,7 @@ target_link_libraries(app PRIVATE galay-mysql::galay-mysql)
 #include "galay-mysql/sync/MysqlClient.h"
 ```
 
+模块入口文件为 `galay-mysql/module/galay.mysql.cppm`；只有当 import 编译路径被 CMake 判定为可用时，仓库才会额外生成 `galay-mysql-modules` 门面 target（与主库 target 分离）并启用 import 示例与模块 file set。
 模块入口文件为 `galay-mysql/module/galay.mysql.cppm`；只有当 import 编译路径被 CMake 判定为可用时，仓库才会额外生成 `galay-mysql-modules` 门面 target（与主库 target 分离）并启用 import 示例与模块 file set。
 
 ## 异步 API 语义
@@ -192,10 +191,11 @@ int main()
 - `GALAY_MYSQL_PASSWORD`
 - `GALAY_MYSQL_DB`
 
-`T1-MysqlProtocol`、`T2-MysqlAuth` 与 `T8-MysqlAwaitableSurface` 是纯单元测试，不需要 MySQL；`T3`-`T7` 是集成测试，缺少上述环境变量时会以 exit code `125` 退出，`ctest` 会把它们标记为 skipped。
+`T0-ConfigContract`、`T1-MysqlProtocol`、`T2-MysqlAuth`、`T8-MysqlAwaitableSurface` 与 `T9-ConfigEnvSurface` 是纯单元测试，不需要 MySQL；`T3`-`T7` 是集成测试，缺少上述环境变量时会以 exit code `125` 退出，`ctest` 会把它们标记为 skipped。
 
 `ctest` 测试项：
 
+- `T0-ConfigContract`
 - `T1-MysqlProtocol`
 - `T2-MysqlAuth`
 - `T3-AsyncMysqlClient`
@@ -204,6 +204,7 @@ int main()
 - `T6-Transaction`
 - `T7-PreparedStatement`
 - `T8-MysqlAwaitableSurface`
+- `T9-ConfigEnvSurface`
 - `PackageConfig.ConsumerSmoke`（安装当前构建产物后，用外部 consumer 工程验证 `find_package(GalayMysql)`）
 
 include 示例 target：

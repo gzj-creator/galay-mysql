@@ -11,21 +11,18 @@ namespace mysql_test
 {
 
 struct MysqlTestConfig {
-    std::string host = "127.0.0.1";
+    std::string host;
     uint16_t port = 3306;
-    std::string user = "gong";
-    std::string password = "123456";
-    std::string database = "gong";
+    std::string user;
+    std::string password;
+    std::string database;
 };
 
-inline const char* getEnvIfSet(const char* key)
-{
-    return std::getenv(key);
-}
+inline constexpr int kMysqlTestSkippedExitCode = 125;
 
 inline const char* getEnvNonEmpty(const char* key)
 {
-    const char* value = getEnvIfSet(key);
+    const char* value = std::getenv(key);
     if (value == nullptr || value[0] == '\0') {
         return nullptr;
     }
@@ -34,10 +31,10 @@ inline const char* getEnvNonEmpty(const char* key)
 
 inline std::string getEnvOrDefault(const char* key1, const char* key2, const std::string& default_value)
 {
-    if (const char* value = getEnvIfSet(key1)) {
+    if (const char* value = getEnvNonEmpty(key1)) {
         return value;
     }
-    if (const char* value = getEnvIfSet(key2)) {
+    if (const char* value = getEnvNonEmpty(key2)) {
         return value;
     }
     return default_value;
@@ -78,6 +75,26 @@ inline MysqlTestConfig loadMysqlTestConfig()
     cfg.password = getEnvOrDefault("GALAY_MYSQL_PASSWORD", "MYSQL_PASSWORD", cfg.password);
     cfg.database = getEnvOrDefault("GALAY_MYSQL_DB", "MYSQL_DATABASE", cfg.database);
     return cfg;
+}
+
+inline bool hasRequiredMysqlTestConfig(const MysqlTestConfig& cfg)
+{
+    return !cfg.host.empty()
+        && !cfg.user.empty()
+        && !cfg.database.empty();
+}
+
+inline int requireMysqlTestConfigOrSkip(const MysqlTestConfig& cfg, const char* test_name)
+{
+    if (hasRequiredMysqlTestConfig(cfg)) {
+        return 0;
+    }
+
+    std::cerr << test_name
+              << " skipped: set GALAY_MYSQL_HOST, GALAY_MYSQL_PORT, GALAY_MYSQL_USER, "
+                 "GALAY_MYSQL_PASSWORD, GALAY_MYSQL_DB (or MYSQL_* compatibility variables)."
+              << std::endl;
+    return kMysqlTestSkippedExitCode;
 }
 
 inline void printMysqlTestConfig(const MysqlTestConfig& cfg)

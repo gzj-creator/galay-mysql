@@ -209,6 +209,10 @@ int main()
 {
     std::cout << "=== T3: Async MySQL Client Tests ===" << std::endl;
     const auto db_cfg = mysql_test::loadMysqlTestConfig();
+    if (const int skip_code = mysql_test::requireMysqlTestConfigOrSkip(db_cfg, "T3-AsyncMysqlClient");
+        skip_code != 0) {
+        return skip_code;
+    }
     mysql_test::printMysqlTestConfig(db_cfg);
 
     try {
