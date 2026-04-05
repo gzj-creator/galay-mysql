@@ -34,14 +34,15 @@
 
 | 场景 | 当前仓库真实要求 |
 | --- | --- |
-| include 头文件路径 | CMake `>= 3.20`，可用的 C++23 / `std::expected` 工具链，依赖 `galay-kernel`、OpenSSL、spdlog |
+| include 头文件路径 | CMake `>= 3.20`，可用的 C++23 / `std::expected` 工具链，依赖 `galay-kernel (>= 3.4.4)`、OpenSSL、spdlog |
 | import / module 路径 | CMake `>= 3.28`，`Ninja` 或 `Visual Studio` 生成器，并开启 `GALAY_MYSQL_ENABLE_IMPORT_COMPILATION=ON` |
 | GCC import 稳定路径 | `Linux + GCC >= 14` |
 | Clang import 路径 | 非 `AppleClang`，且能找到 `clang-scan-deps` |
 
 当前 CMake 选项来自 `cmake/option.cmake`：
 
-- `GALAY_MYSQL_BUILD_TESTS`
+- `BUILD_TESTING`（标准 CTest 开关）
+- `GALAY_MYSQL_BUILD_TESTS`（兼容别名，已废弃）
 - `GALAY_MYSQL_BUILD_EXAMPLES`
 - `GALAY_MYSQL_BUILD_BENCHMARKS`
 - `GALAY_MYSQL_BUILD_SHARED_LIBS`
@@ -55,9 +56,10 @@
 ```bash
 cmake -S . -B build \
   -DCMAKE_BUILD_TYPE=Release \
-  -DGALAY_MYSQL_BUILD_TESTS=ON \
+  -DBUILD_TESTING=ON \
   -DGALAY_MYSQL_BUILD_EXAMPLES=ON \
-  -DGALAY_MYSQL_BUILD_BENCHMARKS=ON
+  -DGALAY_MYSQL_BUILD_BENCHMARKS=ON \
+  -DCMAKE_PREFIX_PATH=/Users/gongzhijie/Desktop/projects/git/.galay-prefix/latest
 cmake --build build --parallel
 ```
 
@@ -67,6 +69,13 @@ cmake --build build --parallel
 - OpenSSL（必需）
 - spdlog（必需）
 - MySQL 服务端（运行 examples/tests/benchmarks 时必需）
+
+默认会优先尝试以下 sibling 前缀（若存在）：
+
+- `../.galay-prefix/latest`
+- `../galay-kernel/install-local`
+- `../galay-kernel/_install-smoke-344`
+- `../galay-kernel/_install-smoke`
 
 ## 安装与外部 CMake 消费
 
@@ -95,7 +104,7 @@ target_link_libraries(app PRIVATE galay-mysql::galay-mysql)
 #include "galay-mysql/sync/MysqlClient.h"
 ```
 
-模块入口文件为 `galay-mysql/module/galay.mysql.cppm`；只有当 import 编译路径被 CMake 判定为可用时，模块示例与模块 file set 才会启用。
+模块入口文件为 `galay-mysql/module/galay.mysql.cppm`；只有当 import 编译路径被 CMake 判定为可用时，仓库才会额外生成 `galay-mysql-modules` 门面 target（与主库 target 分离）并启用 import 示例与模块 file set。
 
 ## 异步 API 语义
 
@@ -183,11 +192,10 @@ int main()
 - `GALAY_MYSQL_PASSWORD`
 - `GALAY_MYSQL_DB`
 
-`T0-ConfigContract`、`T1-MysqlProtocol` 与 `T2-MysqlAuth` 是纯单元测试，不需要 MySQL；`T3`-`T7` 是集成测试，缺少上述环境变量时会以 exit code `125` 退出，`ctest` 会把它们标记为 skipped。
+`T1-MysqlProtocol`、`T2-MysqlAuth` 与 `T8-MysqlAwaitableSurface` 是纯单元测试，不需要 MySQL；`T3`-`T7` 是集成测试，缺少上述环境变量时会以 exit code `125` 退出，`ctest` 会把它们标记为 skipped。
 
 `ctest` 测试项：
 
-- `T0-ConfigContract`
 - `T1-MysqlProtocol`
 - `T2-MysqlAuth`
 - `T3-AsyncMysqlClient`
@@ -195,6 +203,7 @@ int main()
 - `T5-ConnectionPool`
 - `T6-Transaction`
 - `T7-PreparedStatement`
+- `T8-MysqlAwaitableSurface`
 - `PackageConfig.ConsumerSmoke`（安装当前构建产物后，用外部 consumer 工程验证 `find_package(GalayMysql)`）
 
 include 示例 target：
@@ -246,6 +255,13 @@ cmake --build build --target \
 ./build/examples/E5-async_pipeline-Include
 
 cmake --build build --target B1-SyncPressure B2-AsyncPressure --parallel
+
+GALAY_MYSQL_HOST=127.0.0.1 \
+GALAY_MYSQL_PORT=3306 \
+GALAY_MYSQL_USER=root \
+GALAY_MYSQL_PASSWORD=password \
+GALAY_MYSQL_DB=test \
+./scripts/S2-Bench-Rust-Compare.sh ./build
 ```
 
 ## 已知限制
@@ -253,5 +269,6 @@ cmake --build build --target B1-SyncPressure B2-AsyncPressure --parallel
 - import / module 示例是否生成完全由 `GALAY_MYSQL_BUILD_MODULE_EXAMPLES_EFFECTIVE` 决定，不满足工具链条件时会自动关闭。
 - 当前文档不把传输层 TLS 当作已验证能力来承诺；OpenSSL 在源码中用于认证相关加密辅助。
 - 当前仓库只有 `B1-SyncPressure` 和 `B2-AsyncPressure` 两个 benchmark target；性能数值请以可复现命令和原始输出为准，见 [05-性能测试](docs/05-性能测试.md)。
+- Rust 对照 benchmark 位于 `benchmark/compare/rust/`，可通过 `scripts/S2-Bench-Rust-Compare.sh` 与 C++ benchmark 做同场景对比。
 - benchmark CLI 当前没有专门的 `--help` 开关；参数列表应以 `benchmark/common/BenchmarkConfig.h` 与 [05-性能测试](docs/05-性能测试.md) 为准。
 - 建议把一个 `AsyncMysqlClient` 当作单条请求/响应流顺序使用，不要在同一连接上叠加并发操作。

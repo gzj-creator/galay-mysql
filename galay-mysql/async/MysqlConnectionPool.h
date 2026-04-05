@@ -4,7 +4,7 @@
 #include "AsyncMysqlClient.h"
 #include "galay-mysql/base/MysqlConfig.h"
 #include <galay-kernel/kernel/IOScheduler.hpp>
-#include <galay-kernel/kernel/Coroutine.h>
+#include <galay-kernel/kernel/Task.h>
 #include <galay-kernel/concurrency/AsyncWaiter.h>
 #include <memory>
 #include <vector>
@@ -50,7 +50,36 @@ public:
         AcquireAwaitable(MysqlConnectionPool& pool);
 
         bool await_ready() const noexcept;
-        bool await_suspend(std::coroutine_handle<> handle);
+        template <typename Promise>
+        requires requires(const Promise& promise) {
+            { promise.taskRefView() } -> std::same_as<const galay::kernel::TaskRef&>;
+        }
+        bool await_suspend(std::coroutine_handle<Promise> handle)
+        {
+            if (m_state != State::Invalid) {
+                return false;
+            }
+
+            m_client = m_pool.tryAcquire();
+            if (m_client) {
+                m_state = State::Ready;
+                m_connect_awaitable.reset();
+                return false;
+            }
+
+            m_client = m_pool.createClient();
+            if (m_client) {
+                m_state = State::Creating;
+                m_connect_awaitable.emplace(*m_client, m_pool.m_mysql_config);
+                return m_connect_awaitable->await_suspend(handle);
+            }
+
+            m_state = State::Waiting;
+            m_connect_awaitable.reset();
+            std::lock_guard<std::mutex> lock(m_pool.m_mutex);
+            m_pool.m_waiters.push(handle);
+            return true;
+        }
         std::expected<std::optional<AsyncMysqlClient*>, MysqlError> await_resume();
 
     private:

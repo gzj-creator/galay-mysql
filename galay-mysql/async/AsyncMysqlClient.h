@@ -2,8 +2,9 @@
 #define GALAY_MYSQL_ASYNC_CLIENT_H
 
 #include <galay-kernel/async/TcpSocket.h>
+#include <galay-kernel/kernel/Awaitable.h>
 #include <galay-kernel/kernel/IOScheduler.hpp>
-#include <galay-kernel/kernel/Coroutine.h>
+#include <galay-kernel/kernel/Task.h>
 #include <galay-kernel/kernel/Timeout.hpp>
 #include <galay-kernel/common/Host.hpp>
 #include <galay-kernel/common/Error.h>
@@ -11,11 +12,13 @@
 #include <string>
 #include <string_view>
 #include <span>
+#include <array>
 #include <expected>
 #include <optional>
 #include <vector>
 #include <coroutine>
 #include <utility>
+#include <sys/uio.h>
 #include "galay-mysql/base/MysqlError.h"
 #include "galay-mysql/base/MysqlLog.h"
 #include "galay-mysql/base/MysqlValue.h"
@@ -31,16 +34,12 @@ namespace galay::mysql
 
 using galay::async::TcpSocket;
 using galay::kernel::IOScheduler;
-using galay::kernel::Coroutine;
 using galay::kernel::Host;
 using galay::kernel::IOError;
 using galay::kernel::IPType;
-using galay::kernel::ReadvAwaitable;
-using galay::kernel::ReadvIOContext;
-using galay::kernel::WritevIOContext;
-using galay::kernel::ConnectAwaitable;
-using galay::kernel::ConnectIOContext;
-using galay::kernel::CustomAwaitable;
+using galay::kernel::Task;
+
+using Coroutine = Task<void>;
 
 // 类型别名
 using MysqlResult = std::expected<MysqlResultSet, MysqlError>;
@@ -111,86 +110,28 @@ private:
 
 /**
  * @brief MySQL连接等待体
- * @details 基于CustomAwaitable链式执行 CONNECT -> READV -> SEND -> READV
+ * @details 通过最新 state-machine awaitable 内核执行 CONNECT -> READV -> SEND -> READV
  */
-class MysqlConnectAwaitable : public CustomAwaitable
+class MysqlConnectAwaitable
 {
 public:
-    class ProtocolConnectAwaitable : public ConnectIOContext
-    {
-    public:
-        explicit ProtocolConnectAwaitable(MysqlConnectAwaitable* owner);
-
-#ifdef USE_IOURING
-        bool handleComplete(struct io_uring_cqe* cqe, GHandle handle) override;
-#else
-        bool handleComplete(GHandle handle) override;
-#endif
-
-    private:
-        MysqlConnectAwaitable* m_owner;
-    };
-
-    class ProtocolHandshakeRecvAwaitable : public ReadvIOContext
-    {
-    public:
-        explicit ProtocolHandshakeRecvAwaitable(MysqlConnectAwaitable* owner);
-
-#ifdef USE_IOURING
-        bool handleComplete(struct io_uring_cqe* cqe, GHandle handle) override;
-#else
-        bool handleComplete(GHandle handle) override;
-#endif
-
-    private:
-        MysqlConnectAwaitable* m_owner;
-        std::vector<struct iovec> m_iovecs;
-    };
-
-    class ProtocolAuthSendAwaitable : public WritevIOContext
-    {
-    public:
-        explicit ProtocolAuthSendAwaitable(MysqlConnectAwaitable* owner);
-
-#ifdef USE_IOURING
-        bool handleComplete(struct io_uring_cqe* cqe, GHandle handle) override;
-#else
-        bool handleComplete(GHandle handle) override;
-#endif
-
-    private:
-        void syncSendIovecs();
-        void syncContextIovecs();
-
-        MysqlConnectAwaitable* m_owner;
-        std::vector<struct iovec> m_iovecs;
-        const char* m_buffer = nullptr;
-        size_t m_length = 0;
-    };
-
-    class ProtocolAuthResultRecvAwaitable : public ReadvIOContext
-    {
-    public:
-        explicit ProtocolAuthResultRecvAwaitable(MysqlConnectAwaitable* owner);
-
-#ifdef USE_IOURING
-        bool handleComplete(struct io_uring_cqe* cqe, GHandle handle) override;
-#else
-        bool handleComplete(GHandle handle) override;
-#endif
-
-    private:
-        MysqlConnectAwaitable* m_owner;
-        std::vector<struct iovec> m_iovecs;
-    };
+    using Result = std::expected<std::optional<bool>, MysqlError>;
 
     MysqlConnectAwaitable(AsyncMysqlClient& client, MysqlConfig config);
+    MysqlConnectAwaitable(MysqlConnectAwaitable&&) noexcept = default;
+    MysqlConnectAwaitable& operator=(MysqlConnectAwaitable&&) noexcept = default;
+    MysqlConnectAwaitable(const MysqlConnectAwaitable&) = delete;
+    MysqlConnectAwaitable& operator=(const MysqlConnectAwaitable&) = delete;
 
-    bool await_ready() const noexcept { return false; }
-    using CustomAwaitable::await_suspend;
-    std::expected<std::optional<bool>, MysqlError> await_resume();
+    bool await_ready() { return m_inner.await_ready(); }
+    template <typename Promise>
+    bool await_suspend(std::coroutine_handle<Promise> handle)
+    {
+        return m_inner.await_suspend(handle);
+    }
+    Result await_resume() { return m_inner.await_resume(); }
 
-    bool isInvalid() const { return m_lifecycle == Lifecycle::Invalid; }
+    bool isInvalid() const;
 
 private:
     enum class AuthStage {
@@ -200,139 +141,146 @@ private:
         AwaitFinalResult
     };
 
-    enum class Lifecycle {
+    enum class Phase {
         Invalid,
-        Running,
+        Connect,
+        HandshakeRead,
+        AuthWrite,
+        AuthResultRead,
         Done
     };
 
-    void reset() noexcept;
-    void setError(MysqlError error) noexcept;
-    void setConnectError(const IOError& io_error) noexcept;
-    void setSendError(const IOError& io_error) noexcept;
-    void setRecvError(const std::string& phase, const IOError& io_error) noexcept;
-    std::expected<bool, MysqlError> parseHandshakeFromRingBuffer();
-    std::expected<bool, MysqlError> parseAuthResultFromRingBuffer();
+    struct SharedState {
+        explicit SharedState(AsyncMysqlClient& client, MysqlConfig config);
 
-    AsyncMysqlClient& m_client;
-    MysqlConfig m_config;
-    Lifecycle m_lifecycle;
+        AsyncMysqlClient* client = nullptr;
+        MysqlConfig config;
+        galay::kernel::Host host;
+        Phase phase = Phase::Connect;
+        protocol::HandshakeV10 handshake;
+        AuthStage auth_stage = AuthStage::InitialResponse;
+        std::string auth_packet;
+        size_t sent = 0;
+        bool connected = false;
+        std::string parse_scratch;
+        std::array<struct iovec, 2> read_iovecs{};
+        size_t read_iov_count = 0;
+        std::optional<Result> result;
+    };
 
-    // 握手数据
-    protocol::HandshakeV10 m_handshake;
-    AuthStage m_auth_stage;
-    std::string m_auth_packet;
-    size_t m_sent;
-    bool m_connected = false;
+    struct Machine {
+        using result_type = Result;
+        static constexpr galay::kernel::SequenceOwnerDomain kSequenceOwnerDomain =
+            galay::kernel::SequenceOwnerDomain::ReadWrite;
 
-    ProtocolConnectAwaitable m_connect_awaitable;
-    ProtocolHandshakeRecvAwaitable m_handshake_recv_awaitable;
-    ProtocolAuthSendAwaitable m_auth_send_awaitable;
-    ProtocolAuthResultRecvAwaitable m_auth_result_recv_awaitable;
-    std::optional<MysqlError> m_chain_error;
-    std::string m_parse_scratch;
+        explicit Machine(std::shared_ptr<SharedState> state);
+
+        galay::kernel::MachineAction<result_type> advance();
+        void onConnect(std::expected<void, IOError> result);
+        void onRead(std::expected<size_t, IOError> result);
+        void onWrite(std::expected<size_t, IOError> result);
+
+    private:
+        bool prepareReadWindow();
+        std::expected<bool, MysqlError> parseHandshakeFromRingBuffer();
+        std::expected<bool, MysqlError> parseAuthResultFromRingBuffer();
+        void setError(MysqlError error) noexcept;
+        void setConnectError(const IOError& io_error) noexcept;
+        void setSendError(const IOError& io_error) noexcept;
+        void setRecvError(const std::string& phase, const IOError& io_error) noexcept;
+        void completeSuccess() noexcept;
+
+        std::shared_ptr<SharedState> m_state;
+    };
+
+    using InnerAwaitable = galay::kernel::StateMachineAwaitable<Machine>;
+
+    std::shared_ptr<SharedState> m_state;
+    InnerAwaitable m_inner;
 };
 
 // ============= MysqlQueryAwaitable ========================
 
 /**
  * @brief MySQL查询等待体
- * @details 基于CustomAwaitable链式执行 SEND -> READV，
+ * @details 基于 sequence awaitable 链式执行 SEND -> READV，
  *          在“查询包发送完毕”和“结果集解析完毕”两个语义点唤醒。
  */
-class MysqlQueryAwaitable : public CustomAwaitable, public galay::kernel::TimeoutSupport<MysqlQueryAwaitable>
+class MysqlQueryAwaitable
+    : public galay::kernel::TimeoutSupport<MysqlQueryAwaitable>
 {
 public:
-    class ProtocolSendAwaitable : public WritevIOContext
-    {
-    public:
-        explicit ProtocolSendAwaitable(MysqlQueryAwaitable* owner);
-
-#ifdef USE_IOURING
-        bool handleComplete(struct io_uring_cqe* cqe, GHandle handle) override;
-#else
-        bool handleComplete(GHandle handle) override;
-#endif
-
-    private:
-        void syncSendIovecs();
-        bool handleSendResult();
-        void syncContextIovecs();
-
-        MysqlQueryAwaitable* m_owner;
-        std::vector<struct iovec> m_iovecs;
-        const char* m_buffer = nullptr;
-        size_t m_length = 0;
-    };
-
-    class ProtocolRecvAwaitable : public ReadvIOContext
-    {
-    public:
-        explicit ProtocolRecvAwaitable(MysqlQueryAwaitable* owner);
-
-#ifdef USE_IOURING
-        bool handleComplete(struct io_uring_cqe* cqe, GHandle handle) override;
-#else
-        bool handleComplete(GHandle handle) override;
-#endif
-
-    private:
-        bool prepareRecvWindow();
-        bool tryParseAndCheckDone();
-        bool handleReadResult();
-        void syncContextIovecs();
-
-        MysqlQueryAwaitable* m_owner;
-        std::vector<struct iovec> m_iovecs;
-    };
+    using Result = std::expected<std::optional<MysqlResultSet>, MysqlError>;
 
     MysqlQueryAwaitable(AsyncMysqlClient& client, std::string_view sql);
+    MysqlQueryAwaitable(MysqlQueryAwaitable&&) noexcept = default;
+    MysqlQueryAwaitable& operator=(MysqlQueryAwaitable&&) noexcept = default;
+    MysqlQueryAwaitable(const MysqlQueryAwaitable&) = delete;
+    MysqlQueryAwaitable& operator=(const MysqlQueryAwaitable&) = delete;
 
-    bool await_ready() const noexcept { return false; }
-    using CustomAwaitable::await_suspend;
-    std::expected<std::optional<MysqlResultSet>, MysqlError> await_resume();
+    bool await_ready() { return m_inner.await_ready(); }
+    template <typename Promise>
+    bool await_suspend(std::coroutine_handle<Promise> handle)
+    {
+        return m_inner.await_suspend(handle);
+    }
+    Result await_resume() { return m_inner.await_resume(); }
+    void markTimeout() { m_inner.markTimeout(); }
 
-    bool isInvalid() const { return m_lifecycle == Lifecycle::Invalid; }
+    bool isInvalid() const;
 
 private:
-    enum class Lifecycle {
+    enum class Phase {
         Invalid,
-        Running,
-        Done
-    };
-
-    enum class State {
+        SendCommand,
         ReceivingHeader,
         ReceivingColumns,
         ReceivingColumnEof,
         ReceivingRows,
+        Done
     };
 
-    void reset() noexcept;
-    void setError(MysqlError error) noexcept;
-    void setSendError(const IOError& io_error) noexcept;
-    void setRecvError(const IOError& io_error) noexcept;
-    std::expected<bool, MysqlError> tryParseFromRingBuffer();
+    struct SharedState {
+        SharedState(AsyncMysqlClient& client, std::string_view sql);
 
-    AsyncMysqlClient& m_client;
-    std::string m_encoded_cmd;
-    Lifecycle m_lifecycle;
-    State m_state;
-    size_t m_sent;
+        AsyncMysqlClient* client = nullptr;
+        std::string encoded_cmd;
+        Phase phase = Phase::SendCommand;
+        size_t sent = 0;
+        MysqlResultSet result_set;
+        uint64_t column_count = 0;
+        size_t columns_received = 0;
+        std::string parse_scratch;
+        std::array<struct iovec, 2> read_iovecs{};
+        size_t read_iov_count = 0;
+        std::optional<Result> result;
+    };
 
-    // 结果集构建
-    MysqlResultSet m_result_set;
-    uint64_t m_column_count;
-    size_t m_columns_received;
+    struct Machine {
+        using result_type = Result;
+        static constexpr galay::kernel::SequenceOwnerDomain kSequenceOwnerDomain =
+            galay::kernel::SequenceOwnerDomain::ReadWrite;
 
-    ProtocolSendAwaitable m_send_awaitable;
-    ProtocolRecvAwaitable m_recv_awaitable;
-    std::optional<MysqlError> m_chain_error;
-    std::string m_parse_scratch;
+        explicit Machine(std::shared_ptr<SharedState> state);
 
-public:
-    // TimeoutSupport需要访问此成员
-    std::expected<std::optional<MysqlResultSet>, galay::kernel::IOError> m_result;
+        galay::kernel::MachineAction<result_type> advance();
+        void onRead(std::expected<size_t, IOError> result);
+        void onWrite(std::expected<size_t, IOError> result);
+
+    private:
+        bool prepareReadWindow();
+        std::expected<bool, MysqlError> tryParseFromRingBuffer();
+        void setError(MysqlError error) noexcept;
+        void setSendError(const IOError& io_error) noexcept;
+        void setRecvError(const IOError& io_error) noexcept;
+
+        std::shared_ptr<SharedState> m_state;
+    };
+
+    using InnerAwaitable = galay::kernel::StateMachineAwaitable<Machine>;
+
+    std::shared_ptr<SharedState> m_state;
+    InnerAwaitable m_inner;
 };
 
 // ======================== MysqlPrepareAwaitable ========================
@@ -341,7 +289,8 @@ public:
  * @brief MySQL预处理语句准备等待体
  * @details 发送COM_STMT_PREPARE并接收响应
  */
-class MysqlPrepareAwaitable : public CustomAwaitable, public galay::kernel::TimeoutSupport<MysqlPrepareAwaitable>
+class MysqlPrepareAwaitable
+    : public galay::kernel::TimeoutSupport<MysqlPrepareAwaitable>
 {
 public:
     /**
@@ -354,96 +303,78 @@ public:
         std::vector<MysqlField> param_fields;
         std::vector<MysqlField> column_fields;
     };
-
-    class ProtocolSendAwaitable : public WritevIOContext
-    {
-    public:
-        explicit ProtocolSendAwaitable(MysqlPrepareAwaitable* owner);
-
-#ifdef USE_IOURING
-        bool handleComplete(struct io_uring_cqe* cqe, GHandle handle) override;
-#else
-        bool handleComplete(GHandle handle) override;
-#endif
-
-    private:
-        void syncSendIovecs();
-        bool handleSendResult();
-        void syncContextIovecs();
-
-        MysqlPrepareAwaitable* m_owner;
-        std::vector<struct iovec> m_iovecs;
-        const char* m_buffer = nullptr;
-        size_t m_length = 0;
-    };
-
-    class ProtocolRecvAwaitable : public ReadvIOContext
-    {
-    public:
-        explicit ProtocolRecvAwaitable(MysqlPrepareAwaitable* owner);
-
-#ifdef USE_IOURING
-        bool handleComplete(struct io_uring_cqe* cqe, GHandle handle) override;
-#else
-        bool handleComplete(GHandle handle) override;
-#endif
-
-    private:
-        bool prepareRecvWindow();
-        bool tryParseAndCheckDone();
-        bool handleReadResult();
-        void syncContextIovecs();
-
-        MysqlPrepareAwaitable* m_owner;
-        std::vector<struct iovec> m_iovecs;
-    };
+    using Result = std::expected<std::optional<PrepareResult>, MysqlError>;
 
     MysqlPrepareAwaitable(AsyncMysqlClient& client, std::string_view sql);
+    MysqlPrepareAwaitable(MysqlPrepareAwaitable&&) noexcept = default;
+    MysqlPrepareAwaitable& operator=(MysqlPrepareAwaitable&&) noexcept = default;
+    MysqlPrepareAwaitable(const MysqlPrepareAwaitable&) = delete;
+    MysqlPrepareAwaitable& operator=(const MysqlPrepareAwaitable&) = delete;
 
-    bool await_ready() const noexcept { return false; }
-    using CustomAwaitable::await_suspend;
-    std::expected<std::optional<PrepareResult>, MysqlError> await_resume();
+    bool await_ready() { return m_inner.await_ready(); }
+    template <typename Promise>
+    bool await_suspend(std::coroutine_handle<Promise> handle)
+    {
+        return m_inner.await_suspend(handle);
+    }
+    Result await_resume() { return m_inner.await_resume(); }
+    void markTimeout() { m_inner.markTimeout(); }
 
-    bool isInvalid() const { return m_lifecycle == Lifecycle::Invalid; }
+    bool isInvalid() const;
 
 private:
-    enum class Lifecycle {
+    enum class Phase {
         Invalid,
-        Running,
-        Done
-    };
-
-    enum class State {
+        SendCommand,
         ReceivingPrepareOk,
         ReceivingParamDefs,
         ReceivingParamEof,
         ReceivingColumnDefs,
         ReceivingColumnEof,
+        Done
     };
 
-    void reset() noexcept;
-    void setError(MysqlError error) noexcept;
-    void setSendError(const IOError& io_error) noexcept;
-    void setRecvError(const IOError& io_error) noexcept;
-    std::expected<bool, MysqlError> tryParseFromRingBuffer();
+    struct SharedState {
+        SharedState(AsyncMysqlClient& client, std::string_view sql);
 
-    AsyncMysqlClient& m_client;
-    std::string m_encoded_cmd;
-    Lifecycle m_lifecycle;
-    State m_state;
-    size_t m_sent;
+        AsyncMysqlClient* client = nullptr;
+        std::string encoded_cmd;
+        Phase phase = Phase::SendCommand;
+        size_t sent = 0;
+        PrepareResult prepare_result;
+        size_t params_received = 0;
+        size_t columns_received = 0;
+        std::string parse_scratch;
+        std::array<struct iovec, 2> read_iovecs{};
+        size_t read_iov_count = 0;
+        std::optional<Result> result;
+    };
 
-    PrepareResult m_prepare_result;
-    size_t m_params_received;
-    size_t m_columns_received;
+    struct Machine {
+        using result_type = Result;
+        static constexpr galay::kernel::SequenceOwnerDomain kSequenceOwnerDomain =
+            galay::kernel::SequenceOwnerDomain::ReadWrite;
 
-    ProtocolSendAwaitable m_send_awaitable;
-    ProtocolRecvAwaitable m_recv_awaitable;
-    std::optional<MysqlError> m_chain_error;
-    std::string m_parse_scratch;
+        explicit Machine(std::shared_ptr<SharedState> state);
 
-public:
-    std::expected<std::optional<PrepareResult>, galay::kernel::IOError> m_result;
+        galay::kernel::MachineAction<result_type> advance();
+        void onRead(std::expected<size_t, IOError> result);
+        void onWrite(std::expected<size_t, IOError> result);
+
+    private:
+        bool prepareReadWindow();
+        std::expected<bool, MysqlError> tryParseFromRingBuffer();
+        void setError(MysqlError error) noexcept;
+        void setSendError(const IOError& io_error) noexcept;
+        void setRecvError(const IOError& io_error) noexcept;
+
+        std::shared_ptr<SharedState> m_state;
+    };
+
+    using InnerAwaitable = galay::kernel::StateMachineAwaitable<Machine>;
+
+    std::shared_ptr<SharedState> m_state;
+    InnerAwaitable m_inner;
 };
 
 // ======================== MysqlStmtExecuteAwaitable ========================
@@ -452,97 +383,81 @@ public:
  * @brief MySQL预处理语句执行等待体
  * @details 发送COM_STMT_EXECUTE并接收结果集
  */
-class MysqlStmtExecuteAwaitable : public CustomAwaitable, public galay::kernel::TimeoutSupport<MysqlStmtExecuteAwaitable>
+class MysqlStmtExecuteAwaitable
+    : public galay::kernel::TimeoutSupport<MysqlStmtExecuteAwaitable>
 {
 public:
-    class ProtocolSendAwaitable : public WritevIOContext
-    {
-    public:
-        explicit ProtocolSendAwaitable(MysqlStmtExecuteAwaitable* owner);
-
-#ifdef USE_IOURING
-        bool handleComplete(struct io_uring_cqe* cqe, GHandle handle) override;
-#else
-        bool handleComplete(GHandle handle) override;
-#endif
-
-    private:
-        void syncSendIovecs();
-        bool handleSendResult();
-        void syncContextIovecs();
-
-        MysqlStmtExecuteAwaitable* m_owner;
-        std::vector<struct iovec> m_iovecs;
-        const char* m_buffer = nullptr;
-        size_t m_length = 0;
-    };
-
-    class ProtocolRecvAwaitable : public ReadvIOContext
-    {
-    public:
-        explicit ProtocolRecvAwaitable(MysqlStmtExecuteAwaitable* owner);
-
-#ifdef USE_IOURING
-        bool handleComplete(struct io_uring_cqe* cqe, GHandle handle) override;
-#else
-        bool handleComplete(GHandle handle) override;
-#endif
-
-    private:
-        bool prepareRecvWindow();
-        bool tryParseAndCheckDone();
-        bool handleReadResult();
-        void syncContextIovecs();
-
-        MysqlStmtExecuteAwaitable* m_owner;
-        std::vector<struct iovec> m_iovecs;
-    };
+    using Result = std::expected<std::optional<MysqlResultSet>, MysqlError>;
 
     MysqlStmtExecuteAwaitable(AsyncMysqlClient& client, std::string encoded_cmd);
+    MysqlStmtExecuteAwaitable(MysqlStmtExecuteAwaitable&&) noexcept = default;
+    MysqlStmtExecuteAwaitable& operator=(MysqlStmtExecuteAwaitable&&) noexcept = default;
+    MysqlStmtExecuteAwaitable(const MysqlStmtExecuteAwaitable&) = delete;
+    MysqlStmtExecuteAwaitable& operator=(const MysqlStmtExecuteAwaitable&) = delete;
 
-    bool await_ready() const noexcept { return false; }
-    using CustomAwaitable::await_suspend;
-    std::expected<std::optional<MysqlResultSet>, MysqlError> await_resume();
+    bool await_ready() { return m_inner.await_ready(); }
+    template <typename Promise>
+    bool await_suspend(std::coroutine_handle<Promise> handle)
+    {
+        return m_inner.await_suspend(handle);
+    }
+    Result await_resume() { return m_inner.await_resume(); }
+    void markTimeout() { m_inner.markTimeout(); }
 
-    bool isInvalid() const { return m_lifecycle == Lifecycle::Invalid; }
+    bool isInvalid() const;
 
 private:
-    enum class Lifecycle {
+    enum class Phase {
         Invalid,
-        Running,
-        Done
-    };
-
-    enum class State {
+        SendCommand,
         ReceivingHeader,
         ReceivingColumns,
         ReceivingColumnEof,
         ReceivingRows,
+        Done
     };
 
-    void reset() noexcept;
-    void setError(MysqlError error) noexcept;
-    void setSendError(const IOError& io_error) noexcept;
-    void setRecvError(const IOError& io_error) noexcept;
-    std::expected<bool, MysqlError> tryParseFromRingBuffer();
+    struct SharedState {
+        SharedState(AsyncMysqlClient& client, std::string encoded_cmd);
 
-    AsyncMysqlClient& m_client;
-    std::string m_encoded_cmd;
-    Lifecycle m_lifecycle;
-    State m_state;
-    size_t m_sent;
+        AsyncMysqlClient* client = nullptr;
+        std::string encoded_cmd;
+        Phase phase = Phase::SendCommand;
+        size_t sent = 0;
+        MysqlResultSet result_set;
+        uint64_t column_count = 0;
+        size_t columns_received = 0;
+        std::string parse_scratch;
+        std::array<struct iovec, 2> read_iovecs{};
+        size_t read_iov_count = 0;
+        std::optional<Result> result;
+    };
 
-    MysqlResultSet m_result_set;
-    uint64_t m_column_count;
-    size_t m_columns_received;
+    struct Machine {
+        using result_type = Result;
+        static constexpr galay::kernel::SequenceOwnerDomain kSequenceOwnerDomain =
+            galay::kernel::SequenceOwnerDomain::ReadWrite;
 
-    ProtocolSendAwaitable m_send_awaitable;
-    ProtocolRecvAwaitable m_recv_awaitable;
-    std::optional<MysqlError> m_chain_error;
-    std::string m_parse_scratch;
+        explicit Machine(std::shared_ptr<SharedState> state);
 
-public:
-    std::expected<std::optional<MysqlResultSet>, galay::kernel::IOError> m_result;
+        galay::kernel::MachineAction<result_type> advance();
+        void onRead(std::expected<size_t, IOError> result);
+        void onWrite(std::expected<size_t, IOError> result);
+
+    private:
+        bool prepareReadWindow();
+        std::expected<bool, MysqlError> tryParseFromRingBuffer();
+        void setError(MysqlError error) noexcept;
+        void setSendError(const IOError& io_error) noexcept;
+        void setRecvError(const IOError& io_error) noexcept;
+
+        std::shared_ptr<SharedState> m_state;
+    };
+
+    using InnerAwaitable = galay::kernel::StateMachineAwaitable<Machine>;
+
+    std::shared_ptr<SharedState> m_state;
+    InnerAwaitable m_inner;
 };
 
 // ======================== MysqlPipelineAwaitable ========================
@@ -551,78 +466,39 @@ public:
  * @brief MySQL Pipeline等待体
  * @details 批量发送编码后的COM_QUERY包并统一接收/解析响应
  */
-class MysqlPipelineAwaitable : public CustomAwaitable, public galay::kernel::TimeoutSupport<MysqlPipelineAwaitable>
+class MysqlPipelineAwaitable
+    : public galay::kernel::TimeoutSupport<MysqlPipelineAwaitable>
 {
 public:
-    class ProtocolSendAwaitable : public WritevIOContext
-    {
-    public:
-        explicit ProtocolSendAwaitable(MysqlPipelineAwaitable* owner);
-
-#ifdef USE_IOURING
-        bool handleComplete(struct io_uring_cqe* cqe, GHandle handle) override;
-#else
-        bool handleComplete(GHandle handle) override;
-#endif
-
-        void rebind(MysqlPipelineAwaitable* owner);
-
-    private:
-        void refillIovWindow();
-        int pendingIovCount();
-        bool advanceAfterWrite(size_t sent_bytes);
-        void syncContextIovecs();
-
-        MysqlPipelineAwaitable* m_owner;
-        size_t m_iov_cursor = 0;
-        size_t m_next_command_index = 0;
-        std::vector<struct iovec> m_iovecs;
-    };
-
-    class ProtocolRecvAwaitable : public ReadvIOContext
-    {
-    public:
-        explicit ProtocolRecvAwaitable(MysqlPipelineAwaitable* owner);
-
-#ifdef USE_IOURING
-        bool handleComplete(struct io_uring_cqe* cqe, GHandle handle) override;
-#else
-        bool handleComplete(GHandle handle) override;
-#endif
-
-        void rebind(MysqlPipelineAwaitable* owner);
-
-    private:
-        bool prepareRecvWindow();
-        bool tryParseAndCheckDone();
-        bool handleReadResult();
-        void syncContextIovecs();
-
-        MysqlPipelineAwaitable* m_owner;
-        std::vector<struct iovec> m_iovecs;
-    };
+    using Result = std::expected<std::optional<std::vector<MysqlResultSet>>, MysqlError>;
 
     MysqlPipelineAwaitable(AsyncMysqlClient& client,
                            std::span<const protocol::MysqlCommandView> commands);
+    MysqlPipelineAwaitable(MysqlPipelineAwaitable&&) noexcept = default;
+    MysqlPipelineAwaitable& operator=(MysqlPipelineAwaitable&&) noexcept = default;
+    MysqlPipelineAwaitable(const MysqlPipelineAwaitable&) = delete;
+    MysqlPipelineAwaitable& operator=(const MysqlPipelineAwaitable&) = delete;
 
-    bool await_ready() const noexcept { return false; }
-    using CustomAwaitable::await_suspend;
-    std::expected<std::optional<std::vector<MysqlResultSet>>, MysqlError> await_resume();
+    bool await_ready() { return m_inner.await_ready(); }
+    template <typename Promise>
+    bool await_suspend(std::coroutine_handle<Promise> handle)
+    {
+        return m_inner.await_suspend(handle);
+    }
+    Result await_resume() { return m_inner.await_resume(); }
+    void markTimeout() { m_inner.markTimeout(); }
 
-    bool isInvalid() const { return m_lifecycle == Lifecycle::Invalid; }
+    bool isInvalid() const;
 
 private:
-    enum class Lifecycle {
+    enum class Phase {
         Invalid,
-        Running,
-        Done
-    };
-
-    enum class State {
+        SendCommands,
         ReceivingHeader,
         ReceivingColumns,
         ReceivingColumnEof,
         ReceivingRows,
+        Done
     };
 
     struct EncodedSlice {
@@ -630,33 +506,58 @@ private:
         size_t length = 0;
     };
 
-    void initTaskQueue();
-    void resetCurrentResult();
-    void finalizeCurrentResult();
-    void reset() noexcept;
-    void setError(MysqlError error) noexcept;
-    void setSendError(const IOError& io_error) noexcept;
-    void setRecvError(const IOError& io_error) noexcept;
-    std::expected<bool, MysqlError> tryParseFromRingBuffer();
+    struct SharedState {
+        SharedState(AsyncMysqlClient& client,
+                    std::span<const protocol::MysqlCommandView> commands);
 
-    AsyncMysqlClient& m_client;
-    size_t m_expected_results;
-    std::string m_encoded_buffer;
-    std::vector<EncodedSlice> m_encoded_slices;
-    Lifecycle m_lifecycle;
-    State m_state;
-    std::vector<MysqlResultSet> m_results;
-    MysqlResultSet m_current_result;
-    uint64_t m_column_count;
-    size_t m_columns_received;
+        AsyncMysqlClient* client = nullptr;
+        size_t expected_results = 0;
+        std::string encoded_buffer;
+        std::vector<EncodedSlice> encoded_slices;
+        std::vector<struct iovec> write_iovecs;
+        size_t write_iov_cursor = 0;
+        size_t next_command_index = 0;
+        Phase phase = Phase::SendCommands;
+        std::vector<MysqlResultSet> results;
+        MysqlResultSet current_result;
+        uint64_t column_count = 0;
+        size_t columns_received = 0;
+        std::string parse_scratch;
+        std::array<struct iovec, 2> read_iovecs{};
+        size_t read_iov_count = 0;
+        std::optional<Result> result;
+    };
 
-    ProtocolSendAwaitable m_send_awaitable;
-    ProtocolRecvAwaitable m_recv_awaitable;
-    std::optional<MysqlError> m_chain_error;
-    std::string m_parse_scratch;
+    struct Machine {
+        using result_type = Result;
+        static constexpr galay::kernel::SequenceOwnerDomain kSequenceOwnerDomain =
+            galay::kernel::SequenceOwnerDomain::ReadWrite;
 
-public:
-    std::expected<std::optional<std::vector<MysqlResultSet>>, galay::kernel::IOError> m_result;
+        explicit Machine(std::shared_ptr<SharedState> state);
+
+        galay::kernel::MachineAction<result_type> advance();
+        void onRead(std::expected<size_t, IOError> result);
+        void onWrite(std::expected<size_t, IOError> result);
+
+    private:
+        bool prepareReadWindow();
+        size_t pendingWriteIovCount();
+        bool advanceAfterWrite(size_t sent_bytes);
+        void refillWriteIovWindow();
+        void resetCurrentResult();
+        void finalizeCurrentResult();
+        std::expected<bool, MysqlError> tryParseFromRingBuffer();
+        void setError(MysqlError error) noexcept;
+        void setSendError(const IOError& io_error) noexcept;
+        void setRecvError(const IOError& io_error) noexcept;
+
+        std::shared_ptr<SharedState> m_state;
+    };
+
+    using InnerAwaitable = galay::kernel::StateMachineAwaitable<Machine>;
+
+    std::shared_ptr<SharedState> m_state;
+    InnerAwaitable m_inner;
 };
 
 // ======================== AsyncMysqlClient ========================
@@ -741,6 +642,7 @@ public:
     const MysqlBufferProvider& bufferProvider() const { return m_ring_buffer.provider(); }
     protocol::MysqlParser& parser() { return m_parser; }
     protocol::MysqlEncoder& encoder() { return m_encoder; }
+    const AsyncMysqlConfig& asyncConfig() const { return m_config; }
     uint32_t serverCapabilities() const { return m_server_capabilities; }
     void setServerCapabilities(uint32_t caps) { m_server_capabilities = caps; }
     MysqlLoggerPtr& logger() { return m_logger; }

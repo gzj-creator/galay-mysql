@@ -126,7 +126,11 @@ int main()
         auto* scheduler = runtime.getNextIOScheduler();
         if (!scheduler) { std::cerr << "No scheduler" << std::endl; return 1; }
         AsyncTestState state;
-        scheduler->spawn(testTransaction(scheduler, &state, db_cfg));
+        if (!scheduleTask(scheduler, testTransaction(scheduler, &state, db_cfg))) {
+            std::cerr << "Failed to schedule transaction test task on IO scheduler" << std::endl;
+            runtime.stop();
+            return 1;
+        }
 
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
         while (!state.done.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline) {

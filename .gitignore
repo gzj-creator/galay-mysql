@@ -54,3 +54,4 @@ compile_commands.json
 *.pid
 *.tmp
 *.result
+benchmark/compare/rust/target/

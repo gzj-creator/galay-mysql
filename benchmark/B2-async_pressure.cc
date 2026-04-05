@@ -372,7 +372,11 @@ int main(int argc, char* argv[])
             std::cerr << "failed to get IO scheduler" << std::endl;
             return 1;
         }
-        scheduler->spawn(runWorker(scheduler, &state, cfg));
+        if (!scheduleTask(scheduler, runWorker(scheduler, &state, cfg))) {
+            runtime.stop();
+            std::cerr << "failed to schedule async benchmark worker on IO scheduler" << std::endl;
+            return 1;
+        }
     }
 
     const auto started = std::chrono::steady_clock::now();

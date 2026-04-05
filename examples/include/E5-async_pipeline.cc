@@ -118,7 +118,11 @@ int main()
     }
 
     AsyncState state;
-    scheduler->spawn(run(scheduler, &state, cfg));
+    if (!scheduleTask(scheduler, run(scheduler, &state, cfg))) {
+        std::cerr << "failed to schedule async pipeline example on IO scheduler" << std::endl;
+        runtime.stop();
+        return 1;
+    }
 
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
     while (!state.done.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline) {

@@ -43,9 +43,7 @@ int main()
         return 1;
     }
 
-    if (exec->rowCount() > 0) {
-        std::cout << "[E4] 3 + 5 => " << exec->row(0).getString(0) << std::endl;
-    }
+    std::cout << "[E4] prepared SELECT returned " << exec->rowCount() << " row(s)" << std::endl;
 
     session.stmtClose(prep->statement_id);
     session.commit();

@@ -43,7 +43,9 @@ Coroutine testAsyncMysql(IOScheduler* scheduler, AsyncTestState* state, mysql_te
     // 连接到MySQL服务器
     std::cout << "Connecting to MySQL server..." << std::endl;
     {
-        auto cr = co_await client.connect(db_cfg.host, db_cfg.port, db_cfg.user, db_cfg.password, db_cfg.database);
+        auto connect_awaitable =
+            client.connect(db_cfg.host, db_cfg.port, db_cfg.user, db_cfg.password, db_cfg.database);
+        auto cr = co_await connect_awaitable;
         if (!cr) {
             state->fail("Connect failed: " + cr.error().message());
             co_return;
@@ -218,9 +220,12 @@ int main()
             std::cerr << "Failed to get IO scheduler" << std::endl;
             return 1;
         }
-
         AsyncTestState state;
-        scheduler->spawn(testAsyncMysql(scheduler, &state, db_cfg));
+        if (!scheduleTask(scheduler, testAsyncMysql(scheduler, &state, db_cfg))) {
+            std::cerr << "Failed to schedule async MySQL test task on IO scheduler" << std::endl;
+            runtime.stop();
+            return 1;
+        }
 
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
         while (!state.done.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline) {

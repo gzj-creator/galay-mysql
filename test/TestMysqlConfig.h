@@ -11,16 +11,21 @@ namespace mysql_test
 {
 
 struct MysqlTestConfig {
-    std::string host = "140.143.142.251";
+    std::string host = "127.0.0.1";
     uint16_t port = 3306;
     std::string user = "gong";
     std::string password = "123456";
     std::string database = "gong";
 };
 
+inline const char* getEnvIfSet(const char* key)
+{
+    return std::getenv(key);
+}
+
 inline const char* getEnvNonEmpty(const char* key)
 {
-    const char* value = std::getenv(key);
+    const char* value = getEnvIfSet(key);
     if (value == nullptr || value[0] == '\0') {
         return nullptr;
     }
@@ -29,10 +34,10 @@ inline const char* getEnvNonEmpty(const char* key)
 
 inline std::string getEnvOrDefault(const char* key1, const char* key2, const std::string& default_value)
 {
-    if (const char* value = getEnvNonEmpty(key1)) {
+    if (const char* value = getEnvIfSet(key1)) {
         return value;
     }
-    if (const char* value = getEnvNonEmpty(key2)) {
+    if (const char* value = getEnvIfSet(key2)) {
         return value;
     }
     return default_value;

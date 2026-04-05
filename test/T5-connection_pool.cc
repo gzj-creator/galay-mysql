@@ -107,7 +107,11 @@ int main()
         }
 
         AsyncTestState state;
-        scheduler->spawn(testConnectionPool(scheduler, &state, db_cfg));
+        if (!scheduleTask(scheduler, testConnectionPool(scheduler, &state, db_cfg))) {
+            std::cerr << "Failed to schedule connection pool test task on IO scheduler" << std::endl;
+            runtime.stop();
+            return 1;
+        }
 
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
         while (!state.done.load(std::memory_order_acquire) && std::chrono::steady_clock::now() < deadline) {

@@ -98,36 +98,6 @@ bool MysqlConnectionPool::AcquireAwaitable::await_ready() const noexcept
     return false;
 }
 
-bool MysqlConnectionPool::AcquireAwaitable::await_suspend(std::coroutine_handle<> handle)
-{
-    if (m_state != State::Invalid) {
-        return false;
-    }
-
-    // 尝试获取空闲连接
-    m_client = m_pool.tryAcquire();
-    if (m_client) {
-        m_state = State::Ready;
-        m_connect_awaitable.reset();
-        return false; // 不挂起，立即返回
-    }
-
-    // 尝试创建新连接
-    m_client = m_pool.createClient();
-    if (m_client) {
-        m_state = State::Creating;
-        m_connect_awaitable.emplace(*m_client, m_pool.m_mysql_config);
-        return m_connect_awaitable->await_suspend(handle);
-    }
-
-    // 池已满，等待连接释放
-    m_state = State::Waiting;
-    m_connect_awaitable.reset();
-    std::lock_guard<std::mutex> lock(m_pool.m_mutex);
-    m_pool.m_waiters.push(handle);
-    return true;
-}
-
 std::expected<std::optional<AsyncMysqlClient*>, MysqlError>
 MysqlConnectionPool::AcquireAwaitable::await_resume()
 {

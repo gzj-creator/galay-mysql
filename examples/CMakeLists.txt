@@ -5,6 +5,16 @@ function(add_mysql_example target_name source_file)
     galay_mysql_apply_cxx(${target_name})
 endfunction()
 
+function(add_mysql_import_example target_name source_file)
+    if(NOT TARGET ${PROJECT_NAME}-modules)
+        message(FATAL_ERROR "Import examples require target '${PROJECT_NAME}-modules', but it does not exist.")
+    endif()
+    add_executable(${target_name} ${source_file})
+    target_link_libraries(${target_name} PRIVATE ${PROJECT_NAME}-modules)
+    target_include_directories(${target_name} PRIVATE ${CMAKE_SOURCE_DIR})
+    galay_mysql_apply_cxx(${target_name})
+endfunction()
+
 # include 版本（自动扫描 examples/include/*.cc）
 file(GLOB include_example_sources CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/include/*.cc"
@@ -26,9 +36,6 @@ if(GALAY_MYSQL_BUILD_MODULE_EXAMPLES_EFFECTIVE)
         get_filename_component(example_name "${example_source}" NAME_WE)
         file(RELATIVE_PATH example_rel "${CMAKE_CURRENT_SOURCE_DIR}" "${example_source}")
         set(target_name "${example_name}-Import")
-        add_mysql_example("${target_name}" "${example_rel}")
-        if(GALAY_MYSQL_IMPORT_COMPILE_OPTIONS)
-            target_compile_options("${target_name}" PRIVATE ${GALAY_MYSQL_IMPORT_COMPILE_OPTIONS})
-        endif()
+        add_mysql_import_example("${target_name}" "${example_rel}")
     endforeach()
 endif()

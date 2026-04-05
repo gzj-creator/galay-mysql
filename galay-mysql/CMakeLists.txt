@@ -1,9 +1,7 @@
 find_package(galay-kernel REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(spdlog REQUIRED)
-find_path(SPDLOG_INCLUDE_DIR spdlog/spdlog.h REQUIRED)
-
-include_directories(${OPENSSL_INCLUDE_DIR})
+find_package(Threads REQUIRED)
 
 file(GLOB SOURCES "base/*.cc" "async/*.cc" "protocol/*.cc" "sync/*.cc")
 
@@ -13,50 +11,69 @@ endif()
 
 add_library(${PROJECT_NAME} ${GALAY_MYSQL_LIBRARY_TYPE} ${SOURCES})
 
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    NO_SYSTEM_FROM_IMPORTED ON
+    EXPORT_NO_SYSTEM ON
+)
+
 target_link_libraries(${PROJECT_NAME}
     PUBLIC galay-kernel::galay-kernel
     PUBLIC OpenSSL::SSL
     PUBLIC OpenSSL::Crypto
-    PUBLIC pthread
+    PUBLIC spdlog::spdlog
+    PUBLIC Threads::Threads
 )
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
     PUBLIC $<INSTALL_INTERFACE:include>
-    PUBLIC ${OPENSSL_INCLUDE_DIR}
-    PUBLIC ${SPDLOG_INCLUDE_DIR}
 )
 
 galay_mysql_apply_cxx(${PROJECT_NAME})
 
 if(GALAY_MYSQL_IMPORT_COMPILATION_ENABLED AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
-    target_sources(${PROJECT_NAME}
+    add_library(${PROJECT_NAME}-modules STATIC)
+    target_link_libraries(${PROJECT_NAME}-modules PUBLIC ${PROJECT_NAME})
+    target_include_directories(${PROJECT_NAME}-modules
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+            $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
+            $<INSTALL_INTERFACE:include>
+    )
+    target_sources(${PROJECT_NAME}-modules
         PUBLIC
             FILE_SET CXX_MODULES
+            BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/module
             FILES ${CMAKE_CURRENT_SOURCE_DIR}/module/galay.mysql.cppm
     )
     if(GALAY_MYSQL_IMPORT_COMPILE_OPTIONS)
-        target_compile_options(${PROJECT_NAME} PUBLIC ${GALAY_MYSQL_IMPORT_COMPILE_OPTIONS})
+        target_compile_options(${PROJECT_NAME}-modules PUBLIC ${GALAY_MYSQL_IMPORT_COMPILE_OPTIONS})
     endif()
+    set_target_properties(${PROJECT_NAME}-modules PROPERTIES
+        CXX_SCAN_FOR_MODULES ON
+        OUTPUT_NAME "${PROJECT_NAME}-modules"
+        EXPORT_NO_SYSTEM ON
+    )
+    galay_mysql_apply_cxx(${PROJECT_NAME}-modules)
 endif()
 
 # 安装编译完成的库文件
+install(TARGETS ${PROJECT_NAME}
+    EXPORT galay-mysql-targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+    INCLUDES DESTINATION include
+)
+
 if(GALAY_MYSQL_IMPORT_COMPILATION_ENABLED AND GALAY_MYSQL_INSTALL_MODULE_INTERFACE AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
-    install(TARGETS ${PROJECT_NAME}
+    install(TARGETS ${PROJECT_NAME}-modules
         EXPORT galay-mysql-targets
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib
         RUNTIME DESTINATION bin
-        INCLUDES DESTINATION include
         FILE_SET CXX_MODULES DESTINATION include/galay-mysql/module
-    )
-else()
-    install(TARGETS ${PROJECT_NAME}
-        EXPORT galay-mysql-targets
-        LIBRARY DESTINATION lib
-        ARCHIVE DESTINATION lib
-        RUNTIME DESTINATION bin
         INCLUDES DESTINATION include
     )
 endif()
@@ -87,6 +104,12 @@ endif()
 install(EXPORT galay-mysql-targets
     FILE GalayMysqlTargets.cmake
     NAMESPACE galay-mysql::
+    DESTINATION lib/cmake/GalayMysql
+)
+
+install(EXPORT galay-mysql-targets
+    FILE GalayMysqlTargets.cmake
+    NAMESPACE galay-mysql::
     DESTINATION lib/cmake/galay-mysql
 )
 
@@ -94,10 +117,36 @@ include(CMakePackageConfigHelpers)
 configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/GalayMysqlConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfig.cmake"
+    INSTALL_DESTINATION lib/cmake/GalayMysql
+)
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/galay-mysqlConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-mysqlConfig.cmake"
     INSTALL_DESTINATION lib/cmake/galay-mysql
+)
+
+set(_galay_mysql_package_version "${PROJECT_VERSION}")
+if("${_galay_mysql_package_version}" STREQUAL "")
+    set(_galay_mysql_package_version "0.0.0")
+endif()
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfigVersion.cmake"
+    VERSION ${_galay_mysql_package_version}
+    COMPATIBILITY SameMajorVersion
 )
 
 install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-mysqlConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfigVersion.cmake"
+    DESTINATION lib/cmake/GalayMysql
+)
+
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-mysqlConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfigVersion.cmake"
     DESTINATION lib/cmake/galay-mysql
 )
