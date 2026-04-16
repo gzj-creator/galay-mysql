@@ -44,47 +44,6 @@ inline Snapshot snapshot()
 } // namespace alloc_stats
 } // namespace
 
-void* operator new(std::size_t size)
-{
-    if (size == 0) {
-        size = 1;
-    }
-    if (void* ptr = std::malloc(size)) {
-        alloc_stats::g_alloc_count.fetch_add(1, std::memory_order_relaxed);
-        alloc_stats::g_alloc_bytes.fetch_add(static_cast<uint64_t>(size), std::memory_order_relaxed);
-        return ptr;
-    }
-    throw std::bad_alloc();
-}
-
-void* operator new[](std::size_t size)
-{
-    return ::operator new(size);
-}
-
-void operator delete(void* ptr) noexcept
-{
-    if (ptr != nullptr) {
-        alloc_stats::g_free_count.fetch_add(1, std::memory_order_relaxed);
-    }
-    std::free(ptr);
-}
-
-void operator delete[](void* ptr) noexcept
-{
-    ::operator delete(ptr);
-}
-
-void operator delete(void* ptr, std::size_t) noexcept
-{
-    ::operator delete(ptr);
-}
-
-void operator delete[](void* ptr, std::size_t) noexcept
-{
-    ::operator delete[](ptr);
-}
-
 namespace
 {
 

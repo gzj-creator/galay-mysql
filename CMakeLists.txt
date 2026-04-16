@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(galay-mysql VERSION 1.2.2 LANGUAGES CXX)
+project(galay-mysql VERSION 1.2.3 LANGUAGES CXX)
 
 set(CMAKE_FIND_PACKAGE_PREFER_CONFIG ON)
 set(CMAKE_NO_SYSTEM_FROM_IMPORTED ON)
