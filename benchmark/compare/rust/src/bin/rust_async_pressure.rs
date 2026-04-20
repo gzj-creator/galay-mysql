@@ -2,8 +2,14 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use mysql_async::prelude::Queryable;
-use mysql_async::Pool;
+use mysql_async::{Pool, Row};
 use tokio::task::JoinSet;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Normal,
+    Pipeline,
+}
 
 #[derive(Clone)]
 struct Config {
@@ -16,6 +22,8 @@ struct Config {
     queries_per_client: usize,
     warmup_queries: usize,
     sql: String,
+    mode: Mode,
+    batch_size: usize,
 }
 
 #[derive(Default)]
@@ -93,10 +101,27 @@ fn parse_args(mut cfg: Config) -> Result<Config, String> {
                 let v = args.get(i).ok_or("missing --sql value")?;
                 cfg.sql = v.clone();
             }
-            "--mode" | "--batch-size" | "--buffer-size" => {
+            "--mode" => {
+                i += 1;
+                let v = args.get(i).ok_or("missing --mode value")?;
+                cfg.mode = match v.as_str() {
+                    "normal" => Mode::Normal,
+                    "pipeline" => Mode::Pipeline,
+                    _ => return Err("invalid --mode value".to_string()),
+                };
+            }
+            "--batch-size" => {
+                i += 1;
+                let v = args.get(i).ok_or("missing --batch-size value")?;
+                cfg.batch_size = v.parse::<usize>().map_err(|_| "invalid --batch-size value")?;
+                if cfg.batch_size == 0 {
+                    return Err("invalid --batch-size value".to_string());
+                }
+            }
+            "--buffer-size" => {
                 i += 1;
                 if args.get(i).is_none() {
-                    return Err(format!("missing {} value", args[i - 1]));
+                    return Err("missing --buffer-size value".to_string());
                 }
             }
             "--alloc-stats" => {}
@@ -105,6 +130,38 @@ fn parse_args(mut cfg: Config) -> Result<Config, String> {
         i += 1;
     }
     Ok(cfg)
+}
+
+fn build_pipeline_sql(sql: &str, batch_size: usize) -> String {
+    let mut combined = String::with_capacity((sql.len() + 1) * batch_size);
+    for index in 0..batch_size {
+        if index > 0 {
+            combined.push(';');
+        }
+        combined.push_str(sql);
+    }
+    combined
+}
+
+async fn execute_materialized(
+    conn: &mut mysql_async::Conn,
+    sql: &str,
+    mode: Mode,
+    batch_size: usize,
+) -> Result<(), mysql_async::Error> {
+    match mode {
+        Mode::Normal => {
+            let _: Vec<Row> = conn.query(sql).await?;
+            Ok(())
+        }
+        Mode::Pipeline => {
+            let mut result = conn.query_iter(build_pipeline_sql(sql, batch_size)).await?;
+            while !result.is_empty() {
+                let _: Vec<Row> = result.collect().await?;
+            }
+            Ok(())
+        }
+    }
 }
 
 fn percentile_ms(samples_ns: &mut [u64], p: f64) -> f64 {
@@ -135,20 +192,35 @@ async fn run_worker(cfg: Arc<Config>) -> WorkerStats {
     };
 
     for _ in 0..cfg.warmup_queries {
-        let _ = conn.query_drop(cfg.sql.as_str()).await;
+        let _ = execute_materialized(&mut conn, cfg.sql.as_str(), cfg.mode, cfg.batch_size).await;
     }
 
-    for _ in 0..cfg.queries_per_client {
+    let iterations = if cfg.mode == Mode::Pipeline {
+        cfg.queries_per_client.div_ceil(cfg.batch_size)
+    } else {
+        cfg.queries_per_client
+    };
+
+    for iteration in 0..iterations {
+        let success_count = if cfg.mode == Mode::Pipeline {
+            let completed = iteration * cfg.batch_size;
+            (cfg.queries_per_client - completed).min(cfg.batch_size) as u64
+        } else {
+            1
+        };
         let started = Instant::now();
-        match conn.query_drop(cfg.sql.as_str()).await {
+        match execute_materialized(&mut conn, cfg.sql.as_str(), cfg.mode, cfg.batch_size).await {
             Ok(_) => {
                 let elapsed = started.elapsed().as_nanos() as u64;
-                stats.success += 1;
+                stats.success += success_count;
                 stats.latency_ns_total += elapsed;
-                stats.latencies_ns.push(elapsed);
+                let per_query_latency = elapsed / success_count.max(1);
+                for _ in 0..success_count {
+                    stats.latencies_ns.push(per_query_latency);
+                }
             }
             Err(e) => {
-                stats.failed += 1;
+                stats.failed += success_count;
                 if stats.first_error.is_none() {
                     stats.first_error = Some(format!("query failed: {e}"));
                 }
@@ -172,6 +244,8 @@ fn main() {
         queries_per_client: env_usize_or_default(&["GALAY_MYSQL_BENCH_QUERIES", "MYSQL_BENCH_QUERIES"], 200),
         warmup_queries: env_usize_or_default(&["GALAY_MYSQL_BENCH_WARMUP", "MYSQL_BENCH_WARMUP"], 10),
         sql: env_or_default(&["GALAY_MYSQL_BENCH_SQL", "MYSQL_BENCH_SQL"], "SELECT 1"),
+        mode: Mode::Normal,
+        batch_size: env_usize_or_default(&["GALAY_MYSQL_BENCH_BATCH_SIZE", "MYSQL_BENCH_BATCH_SIZE"], 16),
     };
     let cfg = match parse_args(cfg) {
         Ok(c) => c,
@@ -186,8 +260,11 @@ fn main() {
         cfg.host, cfg.port, cfg.user, cfg.database
     );
     println!(
-        "Benchmark config: clients={}, queries_per_client={}, warmup={}, mode=async",
-        cfg.clients, cfg.queries_per_client, cfg.warmup_queries
+        "Benchmark config: clients={}, queries_per_client={}, warmup={}, mode={}",
+        cfg.clients,
+        cfg.queries_per_client,
+        cfg.warmup_queries,
+        if cfg.mode == Mode::Pipeline { "pipeline" } else { "async" }
     );
     println!("SQL: {}", cfg.sql);
     println!("Running rust async pressure benchmark...");

@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
-use mysql_async::prelude::Queryable;
-use mysql_async::Pool;
+use mysql::prelude::Queryable;
+use mysql::{OptsBuilder, Pool, Row};
 
 #[derive(Clone)]
 struct Config {
@@ -117,30 +117,42 @@ fn percentile_ms(samples_ns: &mut [u64], p: f64) -> f64 {
     (samples_ns[idx] as f64) / 1e6
 }
 
-async fn run_worker(cfg: Arc<Config>) -> WorkerStats {
+fn build_opts(cfg: &Config) -> mysql::Opts {
+    let builder = OptsBuilder::new()
+        .ip_or_hostname(Some(cfg.host.clone()))
+        .tcp_port(cfg.port)
+        .user(Some(cfg.user.clone()))
+        .pass(Some(cfg.password.clone()))
+        .db_name(Some(cfg.database.clone()));
+    mysql::Opts::from(builder)
+}
+
+fn run_worker(cfg: Arc<Config>) -> WorkerStats {
     let mut stats = WorkerStats::default();
-    let url = format!(
-        "mysql://{}:{}@{}:{}/{}",
-        cfg.user, cfg.password, cfg.host, cfg.port, cfg.database
-    );
-    let pool = Pool::new(url.as_str());
-    let mut conn = match pool.get_conn().await {
-        Ok(c) => c,
+    let pool = match Pool::new(build_opts(&cfg)) {
+        Ok(pool) => pool,
+        Err(e) => {
+            stats.failed = cfg.queries_per_client as u64;
+            stats.first_error = Some(format!("pool init failed: {e}"));
+            return stats;
+        }
+    };
+    let mut conn = match pool.get_conn() {
+        Ok(conn) => conn,
         Err(e) => {
             stats.failed = cfg.queries_per_client as u64;
             stats.first_error = Some(format!("connect failed: {e}"));
-            let _ = pool.disconnect().await;
             return stats;
         }
     };
 
     for _ in 0..cfg.warmup_queries {
-        let _ = conn.query_drop(cfg.sql.as_str()).await;
+        let _: Result<Vec<Row>, _> = conn.query(cfg.sql.as_str());
     }
 
     for _ in 0..cfg.queries_per_client {
         let started = Instant::now();
-        match conn.query_drop(cfg.sql.as_str()).await {
+        match conn.query::<Row, _>(cfg.sql.as_str()) {
             Ok(_) => {
                 let elapsed = started.elapsed().as_nanos() as u64;
                 stats.success += 1;
@@ -156,8 +168,8 @@ async fn run_worker(cfg: Arc<Config>) -> WorkerStats {
         }
     }
 
-    let _ = conn.disconnect().await;
-    let _ = pool.disconnect().await;
+    drop(conn);
+    drop(pool);
     stats
 }
 
@@ -197,13 +209,7 @@ fn main() {
     let mut handles = Vec::with_capacity(cfg.clients);
     for _ in 0..cfg.clients {
         let worker_cfg = Arc::clone(&cfg);
-        handles.push(thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("failed to build tokio runtime");
-            rt.block_on(run_worker(worker_cfg))
-        }));
+        handles.push(thread::spawn(move || run_worker(worker_cfg)));
     }
 
     let mut success = 0u64;

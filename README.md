@@ -269,6 +269,7 @@ GALAY_MYSQL_DB=test \
 - import / module 示例是否生成完全由 `GALAY_MYSQL_BUILD_MODULE_EXAMPLES_EFFECTIVE` 决定，不满足工具链条件时会自动关闭。
 - 当前文档不把传输层 TLS 当作已验证能力来承诺；OpenSSL 在源码中用于认证相关加密辅助。
 - 当前仓库只有 `B1-SyncPressure` 和 `B2-AsyncPressure` 两个 benchmark target；性能数值请以可复现命令和原始输出为准，见 [05-性能测试](docs/05-性能测试.md)。
-- Rust 对照 benchmark 位于 `benchmark/compare/rust/`，可通过 `scripts/S2-Bench-Rust-Compare.sh` 与 C++ benchmark 做同场景对比。
+- Rust 对照 benchmark 位于 `benchmark/compare/rust/`，可通过 `scripts/S2-Bench-Rust-Compare.sh` 与 C++ benchmark 做同场景对比；发布任何 benchmark 数字前必须运行同一套脚本，它会在摘要中打印 `start_time`/`end_time`（UTC）、吞吐和 p50/p95/p99 延迟，并说明资源指标尚需人工采集。
+- 请把这个脚本的原始 stdout 用带时间戳的文件名（例如 `benchmark-results/2026-04-12-S2-Bench-Rust-Compare.txt`）保存下来，文件内天然包含命令、环境变量和时间信息。资源占用目前还无法自动化，后续需要人工采集附带的监控或 profiling 结果。
 - benchmark CLI 当前没有专门的 `--help` 开关；参数列表应以 `benchmark/common/BenchmarkConfig.h` 与 [05-性能测试](docs/05-性能测试.md) 为准。
 - 建议把一个 `AsyncMysqlClient` 当作单条请求/响应流顺序使用，不要在同一连接上叠加并发操作。
