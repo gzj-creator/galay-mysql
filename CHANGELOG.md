@@ -8,6 +8,12 @@
 
 ## [Unreleased]
 
+## [v1.2.5] - 2026-04-21
+
+### Changed
+- 锁定源码构建入口中的 `galay-kernel 3.4.4` 依赖版本，避免在多前缀环境下误命中旧基础库。
+- 对齐源码构建与安装导出配置的内部依赖约束，使 package consumer、example 与 benchmark 使用同一版本基线。
+
 ## [v1.2.4] - 2026-04-20
 
 ### Added

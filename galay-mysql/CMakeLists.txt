@@ -1,4 +1,4 @@
-find_package(galay-kernel REQUIRED)
+find_package(galay-kernel 3.4.4 CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(Threads REQUIRED)
