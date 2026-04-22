@@ -120,12 +120,12 @@ install(EXPORT galay-mysql-targets
 
 include(CMakePackageConfigHelpers)
 configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/GalayMysqlConfig.cmake.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/galay-mysql-config.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfig.cmake"
     INSTALL_DESTINATION ${GALAY_MYSQL_CMAKE_PACKAGE_DIR}
 )
 configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/galay-mysqlConfig.cmake.in"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/galay-mysql-compat-config.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/galay-mysqlConfig.cmake"
     @ONLY
 )

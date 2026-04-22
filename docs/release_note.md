@@ -20,3 +20,13 @@
 - 自述摘要：
   - 锁定源码构建入口里的 `galay-kernel 3.4.4` 依赖版本，确保 `galay-mysql` 在最新基础库前缀下稳定解析依赖。
   - 对齐源码构建与导出包配置的依赖版本基线，减少 package consumer、example 与 benchmark 命中旧内核包的风险。
+
+## v1.2.6 - 2026-04-23
+
+- 版本级别：小版本（patch）
+- Git 提交消息：`chore: 发布 v1.2.6`
+- Git Tag：`v1.2.6`
+- 自述摘要：
+  - 将源码仓库中的主包配置模板统一重命名为小写 kebab-case `galay-mysql-config.cmake.in`，与其他 `galay-*` 项目保持一致。
+  - 将兼容模板独立命名为 `galay-mysql-compat-config.cmake.in`，明确其职责只是生成旧版 `galay-mysqlConfig.cmake` 兼容入口。
+  - 同步修正 `configure_package_config_file(...)` 与 `configure_file(...)` 的模板路径，同时保持安装导出的 `GalayMysqlConfig.cmake`、兼容入口与版本文件名不变。

@@ -8,6 +8,13 @@
 
 ## [Unreleased]
 
+## [v1.2.6] - 2026-04-23
+
+### Changed
+- 将源码仓库中的主包配置模板重命名为统一的小写 kebab-case `galay-mysql-config.cmake.in`，与其他 `galay-*` 项目保持一致。
+- 将兼容模板单独命名为 `galay-mysql-compat-config.cmake.in`，明确其仅用于生成旧版 `galay-mysqlConfig.cmake` 入口。
+- 同步更新 `configure_package_config_file(...)` 与 `configure_file(...)` 的模板路径，安装导出的 `GalayMysqlConfig.cmake`、`galay-mysqlConfig.cmake` 与版本文件继续保持兼容。
+
 ## [v1.2.5] - 2026-04-21
 
 ### Changed
