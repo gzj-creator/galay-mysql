@@ -196,13 +196,13 @@ def validate_find_package_docs(errors: list[str]) -> None:
         "docs/07-常见问题.md",
     ]:
         path = ROOT / relpath
-        require_contains(errors, path, "find_package(GalayMysql REQUIRED CONFIG)")
+        require_contains(errors, path, "find_package(galay-mysql REQUIRED CONFIG)")
         require_contains(errors, path, "galay-mysql::galay-mysql")
         require_absent_regex(
             errors,
             path,
-            re.compile(r"find_package\(galay-mysql REQUIRED CONFIG\)"),
-            "stale package contract `find_package(galay-mysql REQUIRED CONFIG)`",
+            re.compile(r"find_package\(GalayMysql REQUIRED CONFIG\)"),
+            "stale package contract `find_package(GalayMysql REQUIRED CONFIG)`",
         )
 
 

@@ -86,8 +86,7 @@ if(GALAY_MYSQL_IMPORT_COMPILATION_ENABLED AND GALAY_MYSQL_INSTALL_MODULE_INTERFA
     )
 endif()
 
-set(GALAY_MYSQL_CMAKE_PACKAGE_DIR "lib/cmake/GalayMysql")
-set(GALAY_MYSQL_CMAKE_COMPAT_PACKAGE_DIR "lib/cmake/galay-mysql")
+set(GALAY_MYSQL_CMAKE_PACKAGE_DIR "lib/cmake/galay-mysql")
 
 # 安装头文件
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
@@ -113,7 +112,7 @@ endif()
 
 # 导出CMake配置
 install(EXPORT galay-mysql-targets
-    FILE GalayMysqlTargets.cmake
+    FILE galay-mysql-targets.cmake
     NAMESPACE galay-mysql::
     DESTINATION ${GALAY_MYSQL_CMAKE_PACKAGE_DIR}
 )
@@ -121,13 +120,8 @@ install(EXPORT galay-mysql-targets
 include(CMakePackageConfigHelpers)
 configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/galay-mysql-config.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-mysql-config.cmake"
     INSTALL_DESTINATION ${GALAY_MYSQL_CMAKE_PACKAGE_DIR}
-)
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/galay-mysql-compat-config.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/galay-mysqlConfig.cmake"
-    @ONLY
 )
 
 set(_galay_mysql_package_version "${PROJECT_VERSION}")
@@ -136,18 +130,13 @@ if("${_galay_mysql_package_version}" STREQUAL "")
 endif()
 
 write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfigVersion.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-mysql-config-version.cmake"
     VERSION ${_galay_mysql_package_version}
     COMPATIBILITY SameMajorVersion
 )
 
 install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfigVersion.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-mysql-config.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/galay-mysql-config-version.cmake"
     DESTINATION ${GALAY_MYSQL_CMAKE_PACKAGE_DIR}
-)
-install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/galay-mysqlConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/GalayMysqlConfigVersion.cmake"
-    DESTINATION ${GALAY_MYSQL_CMAKE_COMPAT_PACKAGE_DIR}
 )

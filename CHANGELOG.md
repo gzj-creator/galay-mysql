@@ -8,6 +8,13 @@
 
 ## [Unreleased]
 
+### Changed
+- 将安装导出的 CMake package 文件统一为小写 kebab-case：`galay-mysql-config.cmake`、`galay-mysql-config-version.cmake` 与 `galay-mysql-targets.cmake`。
+- 删除旧的 `GalayMysql` 主包和 `galay-mysqlConfig.cmake` 兼容入口，安装后只保留 `find_package(galay-mysql REQUIRED CONFIG)` 消费方式。
+
+### Tests
+- 更新 package consumer smoke 与文档校验脚本，验证小写包名和小写安装文件。
+
 ## [v1.2.6] - 2026-04-23
 
 ### Changed

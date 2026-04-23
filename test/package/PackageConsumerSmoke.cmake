@@ -50,6 +50,16 @@ if(NOT install_result EQUAL 0)
         "stderr:\n${install_stderr}")
 endif()
 
+foreach(required_package_file
+        IN ITEMS
+        "lib/cmake/galay-mysql/galay-mysql-config.cmake"
+        "lib/cmake/galay-mysql/galay-mysql-config-version.cmake"
+        "lib/cmake/galay-mysql/galay-mysql-targets.cmake")
+    if(NOT EXISTS "${prefix_dir}/${required_package_file}")
+        message(FATAL_ERROR "Missing installed package file: ${required_package_file}")
+    endif()
+endforeach()
+
 set(package_prefix_path "${prefix_dir}")
 if(DEFINED GALAY_MYSQL_PACKAGE_CMAKE_PREFIX_PATH
    AND NOT "${GALAY_MYSQL_PACKAGE_CMAKE_PREFIX_PATH}" STREQUAL "")
@@ -79,7 +89,7 @@ execute_process(
 
 if(NOT configure_result EQUAL 0)
     message(FATAL_ERROR
-        "Failed to configure external consumer via find_package(GalayMysql).\n"
+        "Failed to configure external consumer via find_package(galay-mysql).\n"
         "stdout:\n${configure_stdout}\n"
         "stderr:\n${configure_stderr}")
 endif()

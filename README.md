@@ -86,13 +86,13 @@ cmake --install build --prefix /tmp/galay-mysql-install
 外部项目消费方式与当前安装导出保持一致：
 
 ```cmake
-find_package(GalayMysql REQUIRED CONFIG)
+find_package(galay-mysql REQUIRED CONFIG)
 
 add_executable(app main.cc)
 target_link_libraries(app PRIVATE galay-mysql::galay-mysql)
 ```
 
-安装目录中的主配置文件是 `GalayMysqlConfig.cmake`；同时会安装 `galay-mysqlConfig.cmake` 兼容入口，但文档统一以 `GalayMysql` 作为包名。
+安装目录中的主配置文件是 `galay-mysql-config.cmake`；文档统一以 `galay-mysql` 作为包名。
 
 头文件入口：
 
@@ -205,7 +205,7 @@ int main()
 - `T7-PreparedStatement`
 - `T8-MysqlAwaitableSurface`
 - `T9-ConfigEnvSurface`
-- `PackageConfig.ConsumerSmoke`（安装当前构建产物后，用外部 consumer 工程验证 `find_package(GalayMysql)`）
+- `PackageConfig.ConsumerSmoke`（安装当前构建产物后，用外部 consumer 工程验证 `find_package(galay-mysql)`）
 
 include 示例 target：
 

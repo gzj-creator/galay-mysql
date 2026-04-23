@@ -31,7 +31,7 @@
 | 异步连接池 | `galay-mysql/async/MysqlConnectionPool.h` | `examples/include/E3-async_pool.cc` | `test/T5-connection_pool.cc` |
 | 同步客户端 | `galay-mysql/sync/MysqlClient.h` | `examples/include/E2-sync_query.cc`、`examples/include/E4-sync_prepared_tx.cc` | `test/T4-sync_mysql_client.cc` |
 | 协议编码 / 认证辅助 | `galay-mysql/protocol/Builder.h`、`galay-mysql/protocol/MysqlAuth.h`、`galay-mysql/protocol/MysqlProtocol.h`、`galay-mysql/protocol/MysqlPacket.h` | `examples/include/E5-async_pipeline.cc` | `test/T1-mysql_protocol.cc`、`test/T2-mysql_auth.cc` |
-| 安装导出 / 外部消费 | `galay-mysql/CMakeLists.txt`、`GalayMysqlConfig.cmake` | `README.md` 的安装与 `find_package` 片段 | `test/package/PackageConsumerSmoke.cmake`、`test/CMakeLists.txt` 中的 `PackageConfig.ConsumerSmoke` |
+| 安装导出 / 外部消费 | `galay-mysql/CMakeLists.txt`、`galay-mysql-config.cmake` | `README.md` 的安装与 `find_package` 片段 | `test/package/PackageConsumerSmoke.cmake`、`test/CMakeLists.txt` 中的 `PackageConfig.ConsumerSmoke` |
 
 - 当 import / module 构建路径启用时，对应示例也存在于 `examples/import/`。
 - 回答“这个 API 在哪有真实消费者”时，应优先回到上表中的 examples / tests，再回到 Markdown 说明。
@@ -929,13 +929,13 @@ public:
 当前仓库的安装导出方式为：
 
 ```cmake
-find_package(GalayMysql REQUIRED CONFIG)
+find_package(galay-mysql REQUIRED CONFIG)
 target_link_libraries(app PRIVATE galay-mysql::galay-mysql)
 ```
 
-安装树的主配置文件是 `GalayMysqlConfig.cmake`；兼容文件 `galay-mysqlConfig.cmake` 只用于照顾旧消费者。新的外部项目接入应优先使用 `GalayMysql`。
+安装树的主配置文件是 `galay-mysql-config.cmake`；新的外部项目接入应使用 `galay-mysql`。
 
-外部消费者契约的回归验证入口是 `PackageConfig.ConsumerSmoke`：它会安装当前构建产物，再在独立 consumer 工程中执行一次 `find_package(GalayMysql REQUIRED CONFIG)` + `target_link_libraries(app PRIVATE galay-mysql::galay-mysql)`。
+外部消费者契约的回归验证入口是 `PackageConfig.ConsumerSmoke`：它会安装当前构建产物，再在独立 consumer 工程中执行一次 `find_package(galay-mysql REQUIRED CONFIG)` + `target_link_libraries(app PRIVATE galay-mysql::galay-mysql)`。
 
 ## 使用备注
 
