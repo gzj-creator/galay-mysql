@@ -1,4 +1,4 @@
-find_package(galay-kernel 3.4.4 CONFIG REQUIRED)
+find_package(galay-kernel 4.0.0 CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(Threads REQUIRED)
@@ -53,7 +53,7 @@ if(GALAY_MYSQL_IMPORT_COMPILATION_ENABLED AND CMAKE_VERSION VERSION_GREATER_EQUA
         PUBLIC
             FILE_SET CXX_MODULES
             BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/module
-            FILES ${CMAKE_CURRENT_SOURCE_DIR}/module/galay.mysql.cppm
+            FILES ${CMAKE_CURRENT_SOURCE_DIR}/module/galay_mysql.cppm
     )
     if(GALAY_MYSQL_IMPORT_COMPILE_OPTIONS)
         target_compile_options(${PROJECT_NAME}-modules PUBLIC ${GALAY_MYSQL_IMPORT_COMPILE_OPTIONS})

@@ -1,7 +1,7 @@
 @PACKAGE_INIT@
 
 include(CMakeFindDependencyMacro)
-find_dependency(galay-kernel 3.4.4 REQUIRED CONFIG)
+find_dependency(galay-kernel 4.0.0 REQUIRED CONFIG)
 find_dependency(OpenSSL REQUIRED)
 find_dependency(spdlog REQUIRED)
 find_dependency(Threads REQUIRED)

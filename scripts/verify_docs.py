@@ -24,11 +24,11 @@ README_DOC_LINKS = [
     *CANONICAL_DOCS,
 ]
 EXAMPLE_NAMES = [
-    "E1-async_query",
-    "E2-sync_query",
-    "E3-async_pool",
-    "E4-sync_prepared_tx",
-    "E5-async_pipeline",
+    "e1_query",
+    "e2_query",
+    "e3_pool",
+    "e4_prepared",
+    "e5_pipeline",
 ]
 ASYNC_SEMANTICS_FILES = [
     "README.md",

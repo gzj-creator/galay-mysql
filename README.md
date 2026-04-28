@@ -97,13 +97,13 @@ target_link_libraries(app PRIVATE galay-mysql::galay-mysql)
 头文件入口：
 
 ```cpp
-#include "galay-mysql/async/AsyncMysqlClient.h"
-#include "galay-mysql/async/MysqlConnectionPool.h"
-#include "galay-mysql/sync/MysqlClient.h"
+#include "galay-mysql/async/client.h"
+#include "galay-mysql/async/conn_pool.h"
+#include "galay-mysql/sync/mysql_client.h"
 ```
 
-模块入口文件为 `galay-mysql/module/galay.mysql.cppm`；只有当 import 编译路径被 CMake 判定为可用时，仓库才会额外生成 `galay-mysql-modules` 门面 target（与主库 target 分离）并启用 import 示例与模块 file set。
-模块入口文件为 `galay-mysql/module/galay.mysql.cppm`；只有当 import 编译路径被 CMake 判定为可用时，仓库才会额外生成 `galay-mysql-modules` 门面 target（与主库 target 分离）并启用 import 示例与模块 file set。
+模块入口文件为 `galay-mysql/module/galay_mysql.cppm`；只有当 import 编译路径被 CMake 判定为可用时，仓库才会额外生成 `galay-mysql-modules` 门面 target（与主库 target 分离）并启用 import 示例与模块 file set。
+模块入口文件为 `galay-mysql/module/galay_mysql.cppm`；只有当 import 编译路径被 CMake 判定为可用时，仓库才会额外生成 `galay-mysql-modules` 门面 target（与主库 target 分离）并启用 import 示例与模块 file set。
 
 ## 异步 API 语义
 
@@ -118,8 +118,8 @@ target_link_libraries(app PRIVATE galay-mysql::galay-mysql)
 ```cpp
 #include <chrono>
 #include <iostream>
-#include <galay-kernel/kernel/Runtime.h>
-#include "galay-mysql/async/AsyncMysqlClient.h"
+#include <galay-kernel/kernel/runtime.h>
+#include "galay-mysql/async/client.h"
 
 using namespace std::chrono_literals;
 using namespace galay::kernel;
@@ -152,7 +152,7 @@ Coroutine run(IOScheduler* scheduler)
 
 ```cpp
 #include <iostream>
-#include "galay-mysql/sync/MysqlClient.h"
+#include "galay-mysql/sync/mysql_client.h"
 
 using namespace galay::mysql;
 
@@ -191,42 +191,42 @@ int main()
 - `GALAY_MYSQL_PASSWORD`
 - `GALAY_MYSQL_DB`
 
-`T0-ConfigContract`、`T1-MysqlProtocol`、`T2-MysqlAuth`、`T8-MysqlAwaitableSurface` 与 `T9-ConfigEnvSurface` 是纯单元测试，不需要 MySQL；`T3`-`T7` 是集成测试，缺少上述环境变量时会以 exit code `125` 退出，`ctest` 会把它们标记为 skipped。
+`t0_config`、`t1_protocol`、`t2_auth`、`t8_surface` 与 `t9_env` 是纯单元测试，不需要 MySQL；`t3`-`t7` 是集成测试，缺少上述环境变量时会以 exit code `125` 退出，`ctest` 会把它们标记为 skipped。
 
 `ctest` 测试项：
 
-- `T0-ConfigContract`
-- `T1-MysqlProtocol`
-- `T2-MysqlAuth`
-- `T3-AsyncMysqlClient`
-- `T4-SyncMysqlClient`
-- `T5-ConnectionPool`
-- `T6-Transaction`
-- `T7-PreparedStatement`
-- `T8-MysqlAwaitableSurface`
-- `T9-ConfigEnvSurface`
+- `t0_config`
+- `t1_protocol`
+- `t2_auth`
+- `t3_client`
+- `t4_client`
+- `t5_pool`
+- `t6_transaction`
+- `t7_stmt`
+- `t8_surface`
+- `t9_env`
 - `PackageConfig.ConsumerSmoke`（安装当前构建产物后，用外部 consumer 工程验证 `find_package(galay-mysql)`）
 
 include 示例 target：
 
-- `E1-async_query-Include`
-- `E2-sync_query-Include`
-- `E3-async_pool-Include`
-- `E4-sync_prepared_tx-Include`
-- `E5-async_pipeline-Include`
+- `e1_query-Include`
+- `e2_query-Include`
+- `e3_pool-Include`
+- `e4_prepared-Include`
+- `e5_pipeline-Include`
 
 import 示例 target（仅在模块路径实际启用时生成）：
 
-- `E1-async_query-Import`
-- `E2-sync_query-Import`
-- `E3-async_pool-Import`
-- `E4-sync_prepared_tx-Import`
-- `E5-async_pipeline-Import`
+- `e1_query-Import`
+- `e2_query-Import`
+- `e3_pool-Import`
+- `e4_prepared-Import`
+- `e5_pipeline-Import`
 
 benchmark target：
 
-- `B1-SyncPressure`
-- `B2-AsyncPressure`
+- `b1_pressure`
+- `b2_pressure`
 
 常用命令：
 
@@ -235,7 +235,7 @@ ctest --test-dir build -N
 ctest --test-dir build -L unit --output-on-failure
 ctest --test-dir build -R '^PackageConfig.ConsumerSmoke$' --output-on-failure
 
-cmake --build build --target T3-AsyncMysqlClient T4-SyncMysqlClient T5-ConnectionPool --parallel
+cmake --build build --target t3_client t4_client t5_pool --parallel
 GALAY_MYSQL_HOST=127.0.0.1 \
 GALAY_MYSQL_PORT=3306 \
 GALAY_MYSQL_USER=root \
@@ -244,18 +244,18 @@ GALAY_MYSQL_DB=test \
 ctest --test-dir build -L integration --output-on-failure
 
 cmake --build build --target \
-  E1-async_query-Include \
-  E2-sync_query-Include \
-  E3-async_pool-Include \
-  E4-sync_prepared_tx-Include \
-  E5-async_pipeline-Include --parallel
-./build/examples/E1-async_query-Include
-./build/examples/E2-sync_query-Include
-./build/examples/E3-async_pool-Include
-./build/examples/E4-sync_prepared_tx-Include
-./build/examples/E5-async_pipeline-Include
+  e1_query-Include \
+  e2_query-Include \
+  e3_pool-Include \
+  e4_prepared-Include \
+  e5_pipeline-Include --parallel
+./build/examples/e1_query-Include
+./build/examples/e2_query-Include
+./build/examples/e3_pool-Include
+./build/examples/e4_prepared-Include
+./build/examples/e5_pipeline-Include
 
-cmake --build build --target B1-SyncPressure B2-AsyncPressure --parallel
+cmake --build build --target b1_pressure b2_pressure --parallel
 
 GALAY_MYSQL_HOST=127.0.0.1 \
 GALAY_MYSQL_PORT=3306 \
@@ -269,8 +269,8 @@ GALAY_MYSQL_DB=test \
 
 - import / module 示例是否生成完全由 `GALAY_MYSQL_BUILD_MODULE_EXAMPLES_EFFECTIVE` 决定，不满足工具链条件时会自动关闭。
 - 当前文档不把传输层 TLS 当作已验证能力来承诺；OpenSSL 在源码中用于认证相关加密辅助。
-- 当前仓库只有 `B1-SyncPressure` 和 `B2-AsyncPressure` 两个 benchmark target；性能数值请以可复现命令和原始输出为准，见 [05-性能测试](docs/05-性能测试.md)。
+- 当前仓库只有 `b1_pressure` 和 `b2_pressure` 两个 benchmark target；性能数值请以可复现命令和原始输出为准，见 [05-性能测试](docs/05-性能测试.md)。
 - Rust 对照 benchmark 位于 `benchmark/compare/rust/`，可通过 `scripts/S2-Bench-Rust-Compare.sh` 与 C++ benchmark 做同场景对比；发布任何 benchmark 数字前必须运行同一套脚本，它会在摘要中打印 `start_time`/`end_time`（UTC）、吞吐和 p50/p95/p99 延迟，并说明资源指标尚需人工采集。
 - 请把这个脚本的原始 stdout 用带时间戳的文件名（例如 `benchmark-results/2026-04-12-S2-Bench-Rust-Compare.txt`）保存下来，文件内天然包含命令、环境变量和时间信息。资源占用目前还无法自动化，后续需要人工采集附带的监控或 profiling 结果。
-- benchmark CLI 当前没有专门的 `--help` 开关；参数列表应以 `benchmark/common/BenchmarkConfig.h` 与 [05-性能测试](docs/05-性能测试.md) 为准。
+- benchmark CLI 当前没有专门的 `--help` 开关；参数列表应以 `benchmark/common/config.h` 与 [05-性能测试](docs/05-性能测试.md) 为准。
 - 建议把一个 `AsyncMysqlClient` 当作单条请求/响应流顺序使用，不要在同一连接上叠加并发操作。

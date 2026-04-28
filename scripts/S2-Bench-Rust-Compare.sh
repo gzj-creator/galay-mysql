@@ -11,8 +11,8 @@ CARGO_BIN="${CARGO_BIN:-/Users/gongzhijie/.rustup/toolchains/stable-aarch64-appl
 RUSTC_BIN="${RUSTC_BIN:-/Users/gongzhijie/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc}"
 CARGO_EXTRA_ARGS="${CARGO_EXTRA_ARGS:-}"
 
-CPP_B1="${BENCH_DIR}/B1-SyncPressure"
-CPP_B2="${BENCH_DIR}/B2-AsyncPressure"
+CPP_B1="${BENCH_DIR}/b1_pressure"
+CPP_B2="${BENCH_DIR}/b2_pressure"
 RUST_B1="${RUST_TARGET_DIR}/release/rust_sync_pressure"
 RUST_B2="${RUST_TARGET_DIR}/release/rust_async_pressure"
 
@@ -95,7 +95,7 @@ require_binary "$RUST_B1"
 require_binary "$RUST_B2"
 
 echo
-echo "== Scenario A: Sync pressure (C++ B1 vs Rust sync) =="
+echo "== Scenario A: Sync pressure (C++ b1 vs Rust sync) =="
 SCENARIO_A_START="$(timestamp)"
 warmup_benchmark "$CPP_B1" \
     --clients 4 \
@@ -141,12 +141,12 @@ RUST_B1_P50="${RUST_B1_P50:-n/a}"
 RUST_B1_P95="${RUST_B1_P95:-n/a}"
 RUST_B1_P99="${RUST_B1_P99:-n/a}"
 
-print_scenario_summary "Scenario A: Sync pressure (C++ B1 vs Rust sync)" "$SCENARIO_A_START" "$SCENARIO_A_END" \
+print_scenario_summary "Scenario A: Sync pressure (C++ b1 vs Rust sync)" "$SCENARIO_A_START" "$SCENARIO_A_END" \
     "$CPP_B1_QPS" "$CPP_B1_P50" "$CPP_B1_P95" "$CPP_B1_P99" \
     "$RUST_B1_QPS" "$RUST_B1_P50" "$RUST_B1_P95" "$RUST_B1_P99"
 
 echo
-echo "== Scenario B: Async pressure (C++ B2 vs Rust async) =="
+echo "== Scenario B: Async pressure (C++ b2 vs Rust async) =="
 SCENARIO_B_START="$(timestamp)"
 warmup_benchmark "$CPP_B2" \
     --clients 32 \
@@ -204,7 +204,7 @@ RUST_B2_P50="${RUST_B2_P50:-n/a}"
 RUST_B2_P95="${RUST_B2_P95:-n/a}"
 RUST_B2_P99="${RUST_B2_P99:-n/a}"
 
-print_scenario_summary "Scenario B: Async pressure (C++ B2 vs Rust async)" "$SCENARIO_B_START" "$SCENARIO_B_END" \
+print_scenario_summary "Scenario B: Async pressure (C++ b2 vs Rust async)" "$SCENARIO_B_START" "$SCENARIO_B_END" \
     "$CPP_B2_QPS" "$CPP_B2_P50" "$CPP_B2_P95" "$CPP_B2_P99" \
     "$RUST_B2_QPS" "$RUST_B2_P50" "$RUST_B2_P95" "$RUST_B2_P99"
 

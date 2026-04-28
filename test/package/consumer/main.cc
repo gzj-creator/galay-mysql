@@ -2,8 +2,8 @@
 #include <optional>
 #include <string>
 
-#include "galay-mysql/async/AsyncMysqlClient.h"
-#include "galay-mysql/sync/MysqlClient.h"
+#include "galay-mysql/async/client.h"
+#include "galay-mysql/sync/mysql_client.h"
 
 int main()
 {

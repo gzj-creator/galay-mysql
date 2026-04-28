@@ -2,36 +2,36 @@
 
 本页对齐当前安装树会导出的公开头文件（`galay-mysql/CMakeLists.txt` 通过 `install(DIRECTORY ...)` 安装全部 `*.h` / `*.hpp`；若开启模块接口安装，另有 `*.cppm` 文件）：
 
-- `galay-mysql/base/MysqlConfig.h`
-- `galay-mysql/base/MysqlError.h`
-- `galay-mysql/base/MysqlLog.h`
-- `galay-mysql/base/MysqlValue.h`
-- `galay-mysql/async/AsyncMysqlConfig.h`
-- `galay-mysql/async/AsyncMysqlClient.h`
-- `galay-mysql/async/MysqlBufferProvider.h`
-- `galay-mysql/async/MysqlConnectionPool.h`
-- `galay-mysql/sync/MysqlClient.h`
-- `galay-mysql/protocol/Builder.h`
-- `galay-mysql/protocol/MysqlAuth.h`
-- `galay-mysql/protocol/MysqlPacket.h`
-- `galay-mysql/protocol/MysqlProtocol.h`
-- `galay-mysql/module/ModulePrelude.hpp`
+- `galay-mysql/base/mysql_config.h`
+- `galay-mysql/base/mysql_error.h`
+- `galay-mysql/base/mysql_log.h`
+- `galay-mysql/base/mysql_value.h`
+- `galay-mysql/async/config.h`
+- `galay-mysql/async/client.h`
+- `galay-mysql/async/buf_provider.h`
+- `galay-mysql/async/conn_pool.h`
+- `galay-mysql/sync/mysql_client.h`
+- `galay-mysql/protocol/builder.h`
+- `galay-mysql/protocol/mysql_auth.h`
+- `galay-mysql/protocol/mysql_packet.h`
+- `galay-mysql/protocol/mysql_protocol.h`
+- `galay-mysql/module/module_prelude.hpp`
 
 说明：
 
 - 本页覆盖仓库自有、供消费者直接使用的 API。
 - `galay-kernel` / `spdlog` 的上游类型虽然会出现在签名中，但不在此重复展开。
-- `AsyncMysqlClient.h` 中为协程链路暴露的 `Protocol*Awaitable`、生命周期枚举和底层 I/O context 虽然可见，但按实现细节处理；这里记录外部代码应直接依赖的 awaitable / client / protocol API。
+- `client.h` 中为协程链路暴露的 `Protocol*Awaitable`、生命周期枚举和底层 I/O context 虽然可见，但按实现细节处理；这里记录外部代码应直接依赖的 awaitable / client / protocol API。
 
 ## API / 示例 / 测试锚点速查
 
 | 主题 | 公开入口 | 主示例入口 | 主测试 / 验证入口 |
 | --- | --- | --- | --- |
-| 异步单连接客户端 | `galay-mysql/async/AsyncMysqlClient.h` | `examples/include/E1-async_query.cc`、`examples/include/E5-async_pipeline.cc` | `test/T3-async_mysql_client.cc`、`test/T6-Transaction.cc`、`test/T7-prepared_statement.cc` |
-| 异步连接池 | `galay-mysql/async/MysqlConnectionPool.h` | `examples/include/E3-async_pool.cc` | `test/T5-connection_pool.cc` |
-| 同步客户端 | `galay-mysql/sync/MysqlClient.h` | `examples/include/E2-sync_query.cc`、`examples/include/E4-sync_prepared_tx.cc` | `test/T4-sync_mysql_client.cc` |
-| 协议编码 / 认证辅助 | `galay-mysql/protocol/Builder.h`、`galay-mysql/protocol/MysqlAuth.h`、`galay-mysql/protocol/MysqlProtocol.h`、`galay-mysql/protocol/MysqlPacket.h` | `examples/include/E5-async_pipeline.cc` | `test/T1-mysql_protocol.cc`、`test/T2-mysql_auth.cc` |
-| 安装导出 / 外部消费 | `galay-mysql/CMakeLists.txt`、`galay-mysql-config.cmake` | `README.md` 的安装与 `find_package` 片段 | `test/package/PackageConsumerSmoke.cmake`、`test/CMakeLists.txt` 中的 `PackageConfig.ConsumerSmoke` |
+| 异步单连接客户端 | `galay-mysql/async/client.h` | `examples/include/e1_query.cc`、`examples/include/e5_pipeline.cc` | `test/t3_client.cc`、`test/t6_transaction.cc`、`test/t7_stmt.cc` |
+| 异步连接池 | `galay-mysql/async/conn_pool.h` | `examples/include/e3_pool.cc` | `test/t5_pool.cc` |
+| 同步客户端 | `galay-mysql/sync/mysql_client.h` | `examples/include/e2_query.cc`、`examples/include/e4_prepared.cc` | `test/t4_client.cc` |
+| 协议编码 / 认证辅助 | `galay-mysql/protocol/builder.h`、`galay-mysql/protocol/mysql_auth.h`、`galay-mysql/protocol/mysql_protocol.h`、`galay-mysql/protocol/mysql_packet.h` | `examples/include/e5_pipeline.cc` | `test/t1_protocol.cc`、`test/t2_auth.cc` |
+| 安装导出 / 外部消费 | `galay-mysql/CMakeLists.txt`、`galay-mysql-config.cmake` | `README.md` 的安装与 `find_package` 片段 | `test/package/package_consumer_smoke.cmake`、`test/CMakeLists.txt` 中的 `PackageConfig.ConsumerSmoke` |
 
 - 当 import / module 构建路径启用时，对应示例也存在于 `examples/import/`。
 - 回答“这个 API 在哪有真实消费者”时，应优先回到上表中的 examples / tests，再回到 Markdown 说明。
@@ -45,7 +45,7 @@ using MysqlBatchResult = std::expected<std::vector<MysqlResultSet>, MysqlError>;
 ```
 
 - `MysqlResult` / `MysqlVoidResult` 同时出现在异步与同步头文件中。
-- `MysqlBatchResult` 当前由 `galay-mysql/sync/MysqlClient.h` 导出，用于 `batch()` / `pipeline()` 的同步返回值。
+- `MysqlBatchResult` 当前由 `galay-mysql/sync/mysql_client.h` 导出，用于 `batch()` / `pipeline()` 的同步返回值。
 - 异步 `await_resume()` 则统一返回 `std::expected<std::optional<T>, MysqlError>`；当前实现中的成功路径都会构造有值 `optional`，示例与测试保留 `has_value()` 检查属于防御式消费方式。
 
 ## 配置类型
@@ -170,7 +170,7 @@ enum MysqlFieldFlags : uint16_t {
 };
 ```
 
-`MysqlFieldType` 与 `MysqlFieldFlags` 的完整取值和协议位定义见 `galay-mysql/base/MysqlValue.h`。
+`MysqlFieldType` 与 `MysqlFieldFlags` 的完整取值和协议位定义见 `galay-mysql/base/mysql_value.h`。
 
 ### `MysqlField` / `MysqlRow` / `MysqlResultSet`
 
@@ -361,7 +361,7 @@ public:
 - `scheduler()` 对当前仓库是事实上的前置条件：`build()` 只是把内部保存的 `IOScheduler*` 透传给 `AsyncMysqlClient` 构造函数，本仓库不做空指针校验。
 - `config()` 会整体替换 builder 内部的 `AsyncMysqlConfig`，随后再调用 `sendTimeout()` / `recvTimeout()` / `bufferSize()` / `resultRowReserveHint()` 会继续在这份配置上增量修改。
 - `bufferSize()` 仅影响默认 ring buffer；如果同时设置了 `bufferProvider()`，则 `MysqlBufferHandle` 直接持有调用方提供的 provider。
-- 真实消费入口：`README.md` 的异步最小示例、`examples/include/E1-async_query.cc`、`test/T3-async_mysql_client.cc`。
+- 真实消费入口：`README.md` 的异步最小示例、`examples/include/e1_query.cc`、`test/t3_client.cc`。
 
 ## `AsyncMysqlClient`
 
@@ -432,11 +432,11 @@ public:
 - `beginTransaction()` / `commit()` / `rollback()` / `ping()` / `useDatabase()` 都只是 `query()` 的语法糖；其中 `ping()` 实际发送的是 `SELECT 1`，不是 `COM_PING`。
 - `close()` 会先把 `isClosed()` 置为 `true`，然后直接转发到上游 `TcpSocket::close()`；因此消费者应按仓库示例那样使用 `co_await client.close();`。本仓库自身不会在这一步额外发送 MySQL `QUIT` 包。
 - `isClosed()` 是本地生命周期标记，不是“服务端仍在线”的探针；连接被服务端断开时，仍应以随后一次 awaitable 的返回值为准。
-- 真实消费入口：`examples/include/E1-async_query.cc`、`examples/include/E5-async_pipeline.cc`、`test/T3-async_mysql_client.cc`、`test/T6-Transaction.cc`、`test/T7-prepared_statement.cc`。
+- 真实消费入口：`examples/include/e1_query.cc`、`examples/include/e5_pipeline.cc`、`test/t3_client.cc`、`test/t6_transaction.cc`、`test/t7_stmt.cc`。
 
 ## 异步 awaitable 类型
 
-`AsyncMysqlClient.h` 公开的主要 awaitable 类型如下：
+`client.h` 公开的主要 awaitable 类型如下：
 
 ```cpp
 class MysqlConnectAwaitable {
@@ -560,7 +560,7 @@ public:
 - `MysqlPrepareAwaitable` 成功时返回的 `PrepareResult` 包含 `statement_id` / `num_columns` / `num_params`，并且异步路径额外暴露 `param_fields` / `column_fields`。
 - `MysqlPipelineAwaitable` 对空命令 span 的行为是“成功但结果为空 vector”；如果某个 `MysqlCommandView::encoded` 为空，则在构造阶段就会变成 `MYSQL_ERROR_PROTOCOL`。
 - 上游 `galay-kernel` 的超时在这些 awaitable 的 `await_resume()` 中统一折叠为 `MYSQL_ERROR_TIMEOUT`；非超时但未命中的异常则回落为 `MYSQL_ERROR_INTERNAL`。
-- 真实锚点：`examples/include/E1-async_query.cc`、`examples/include/E5-async_pipeline.cc`、`test/T3-async_mysql_client.cc`、`test/T7-prepared_statement.cc`。
+- 真实锚点：`examples/include/e1_query.cc`、`examples/include/e5_pipeline.cc`、`test/t3_client.cc`、`test/t7_stmt.cc`。
 
 ## `MysqlConnectionPool`
 
@@ -596,7 +596,7 @@ public:
 - `release(nullptr)` 是 no-op；重复归还同一指针不会被池层去重，因此调用方需要自己保证借还配对。
 - 池析构时会销毁其持有的全部 client；已借出的 `AsyncMysqlClient*` 在 pool 销毁后立即失效。
 - 池内部只对 idle 队列 / waiter 队列 / 连接计数做同步；拿到的 `AsyncMysqlClient*` 仍然遵守单 client 不承诺并发查询安全的约束。
-- 真实消费入口：`examples/include/E3-async_pool.cc`、`test/T5-connection_pool.cc`。
+- 真实消费入口：`examples/include/e3_pool.cc`、`test/t5_pool.cc`。
 
 ### `MysqlConnectionPool::AcquireAwaitable`
 
@@ -661,11 +661,11 @@ public:
 - `beginTransaction()` / `commit()` / `rollback()` / `ping()` / `useDatabase()` 都是对 `executeSimple()` 的薄封装；其中 `ping()` 同样执行 `SELECT 1`。
 - `close()` 是 best-effort：若当前已连接，会先尝试发送 `QUIT`，无论发送是否成功都继续关闭 socket。
 - 从公开头与实现可见，`MysqlClient` 没有对外声明任何线程同步策略；当前 examples / tests 也只按单线程、串行调用方式使用它。
-- 真实消费入口：`examples/include/E2-sync_query.cc`、`examples/include/E4-sync_prepared_tx.cc`、`test/T4-sync_mysql_client.cc`。
+- 真实消费入口：`examples/include/e2_query.cc`、`examples/include/e4_prepared.cc`、`test/t4_client.cc`。
 
 ## `protocol::MysqlCommandView` 与 `MysqlCommandBuilder`
 
-当你需要使用 `batch()` 时，公开协议构建接口来自 `galay-mysql/protocol/Builder.h`：
+当你需要使用 `batch()` 时，公开协议构建接口来自 `galay-mysql/protocol/builder.h`：
 
 ```cpp
 enum class MysqlCommandKind : uint8_t {
@@ -724,11 +724,11 @@ public:
 - `build()` 会复制当前编码后的字节串；`release()` 会把编码结果 move 出去并清空 builder 内部状态。
 - `appendPing()` / `appendQuit()` / `appendResetConnection()` 这类低层命令是协议构建入口，不意味着高层 `AsyncMysqlClient` / `MysqlClient` 一定提供同名 wrapper。
 - `appendFast()` 的注释前提是“调用方已自行预留足够容量”；保守用法优先选 `reserve()` + `appendQuery()` / `appendSimple()`。
-- 真实锚点：`test/T1-mysql_protocol.cc`、`test/T4-sync_mysql_client.cc`、`examples/include/E5-async_pipeline.cc`。
+- 真实锚点：`test/t1_protocol.cc`、`test/t4_client.cc`、`examples/include/e5_pipeline.cc`。
 
 ## `protocol::AuthPlugin`
 
-`galay-mysql/protocol/MysqlAuth.h` 暴露认证辅助：
+`galay-mysql/protocol/mysql_auth.h` 暴露认证辅助：
 
 ```cpp
 class AuthPlugin {
@@ -750,11 +750,11 @@ public:
 - `cachingSha2Auth()` 对应 `caching_sha2_password` fast auth
 - `cachingSha2FullAuth()` 对应 `caching_sha2_password` 公钥 full auth 辅助
 - `cachingSha2FullAuth()` 的返回类型是 `std::expected<std::string, std::string>`；失败信息直接以字符串错误返回，而不是 `MysqlError`。
-- 同步 / 异步 connect 链路都会在服务端请求 `caching_sha2_password` full auth 时复用这个 helper；具体验证看 `test/T2-mysql_auth.cc`。
+- 同步 / 异步 connect 链路都会在服务端请求 `caching_sha2_password` full auth 时复用这个 helper；具体验证看 `test/t2_auth.cc`。
 
 ## `protocol::MysqlPacket` 协议模型
 
-`galay-mysql/protocol/MysqlPacket.h` 中公开的协议常量 / 枚举 / 结构包括：
+`galay-mysql/protocol/mysql_packet.h` 中公开的协议常量 / 枚举 / 结构包括：
 
 - 常量：`MYSQL_PACKET_HEADER_SIZE`、`MYSQL_MAX_PACKET_SIZE`
 - 命令枚举：`CommandType`
@@ -846,7 +846,7 @@ struct StmtPrepareOkPacket {
 
 ## `protocol::MysqlParser` / `protocol::MysqlEncoder`
 
-`galay-mysql/protocol/MysqlProtocol.h` 暴露协议 helper、parser 与 encoder：
+`galay-mysql/protocol/mysql_protocol.h` 暴露协议 helper、parser 与 encoder：
 
 ```cpp
 std::expected<uint64_t, ParseError> readLenEncInt(const char* data, size_t len, size_t& consumed);
@@ -914,11 +914,11 @@ public:
 
 - `MysqlParser::extractPacket()` / `parseHeader()` 等会返回 `ParseError::Incomplete`，同步 / 异步接收路径正是依靠这个信号继续从 ring buffer 补读，而不是立即把它当成协议错误。
 - `MysqlEncoder::encodePing()` / `encodeQuit()` / `encodeResetConnection()` 主要服务于低层协议拼包；高层客户端目前只把 `query("SELECT 1")` 暴露为 `ping()`。
-- 真实锚点：`test/T1-mysql_protocol.cc`、`test/T4-sync_mysql_client.cc`、`examples/include/E5-async_pipeline.cc`。
+- 真实锚点：`test/t1_protocol.cc`、`test/t4_client.cc`、`examples/include/e5_pipeline.cc`。
 
-## `ModulePrelude.hpp`
+## `module_prelude.hpp`
 
-`galay-mysql/module/ModulePrelude.hpp` 也是安装树中的公开头文件，但它不是额外的 MySQL API 命名空间；它的职责是：
+`galay-mysql/module/module_prelude.hpp` 也是安装树中的公开头文件，但它不是额外的 MySQL API 命名空间；它的职责是：
 
 - 为过渡期 C++23 module / import 构建集中放置系统头、第三方头和公开 MySQL 头
 - 供 `.cppm` 模块接口与 import 示例复用同一组 global module fragment 依赖

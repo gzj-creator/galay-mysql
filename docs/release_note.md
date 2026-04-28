@@ -30,3 +30,13 @@
   - 将源码仓库中的主包配置模板统一重命名为小写 kebab-case `galay-mysql-config.cmake.in`，与其他 `galay-*` 项目保持一致。
   - 将兼容模板独立命名为 `galay-mysql-compat-config.cmake.in`，明确其职责只是生成旧版 `galay-mysqlConfig.cmake` 兼容入口。
   - 同步修正 `configure_package_config_file(...)` 与 `configure_file(...)` 的模板路径，同时保持安装导出的 `GalayMysqlConfig.cmake`、兼容入口与版本文件名不变。
+
+## v2.0.0 - 2026-04-29
+
+- 版本级别：大版本（major）
+- Git 提交消息：`refactor: 统一源码文件命名规范`
+- Git Tag：`v2.0.0`
+- 自述摘要：
+  - 将源码、头文件、测试、示例与 benchmark 文件统一重命名为 lower_snake_case，编号前缀同步改为小写下划线形式。
+  - 同步更新 CMake/Bazel 构建描述、模块入口、README/docs、脚本和所有项目内 include 路径引用。
+  - 移除项目内相对 include，统一使用基于公开 include 根或模块根的非相对路径。
