@@ -1,9 +1,0 @@
-[package]
-name = "galay-mysql-rust-bench"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-mysql = "28"
-mysql_async = "0.34"
-tokio = { version = "1.43", features = ["rt-multi-thread", "time"] }
