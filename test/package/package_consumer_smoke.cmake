@@ -54,7 +54,7 @@ foreach(required_package_file
         IN ITEMS
         "lib/cmake/galay-mysql/galay-mysql-config.cmake"
         "lib/cmake/galay-mysql/galay-mysql-config-version.cmake"
-        "lib/cmake/galay-mysql/galay-mysql-targets.cmake")
+        "lib/cmake/galay-mysql/galayMysqlConfigTargets.cmake")
     if(NOT EXISTS "${prefix_dir}/${required_package_file}")
         message(FATAL_ERROR "Missing installed package file: ${required_package_file}")
     endif()

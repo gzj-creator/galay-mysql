@@ -112,7 +112,7 @@ endif()
 
 # 导出CMake配置
 install(EXPORT galay-mysql-targets
-    FILE galay-mysql-targets.cmake
+    FILE galayMysqlConfigTargets.cmake
     NAMESPACE galay-mysql::
     DESTINATION ${GALAY_MYSQL_CMAKE_PACKAGE_DIR}
 )
