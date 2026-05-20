@@ -1,135 +1,72 @@
+/**
+ * @file mysql_log.h
+ * @brief galay-mysql 独立日志入口与埋点宏
+ */
+
 #ifndef GALAY_MYSQL_LOG_H
 #define GALAY_MYSQL_LOG_H
 
-#include <memory>
-#include <mutex>
-#include <string>
+#include "galay-kernel/common/log_macro.h"
 
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/basic_file_sink.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
-
-namespace galay::mysql
+namespace galay::mysql::detail
 {
+struct MysqlLogTag;
+} // namespace galay::mysql::detail
 
-using MysqlLoggerPtr = std::shared_ptr<spdlog::logger>;
-
-class MysqlLog
+namespace galay::mysql::log
 {
-public:
-    static MysqlLog* getInstance()
-    {
-        static MysqlLog instance;
-        return &instance;
-    }
+/**
+ * @brief 设置 galay-mysql 的库级 logger
+ *
+ * @details 只影响 `MYSQL_LOG_*` 宏产生的日志，不会启用 kernel、ssl、http
+ * 或其他 galay 库日志。推荐在创建 MySQL client/pool 之前的单线程初始化阶段调用。
+ *
+ * @param logger 用户自定义 logger；传入 nullptr 时禁用 galay-mysql 日志。
+ */
+void set(::galay::kernel::BaseLogger::uptr logger);
 
-    static void enable()
-    {
-        console();
-    }
+/**
+ * @brief 获取 galay-mysql 当前 logger
+ *
+ * @return 当前 logger 指针；未设置时返回 nullptr。
+ *
+ * @note 返回指针由 `set()` 注入的 unique_ptr 管理，调用方不得释放。
+ */
+[[nodiscard]] ::galay::kernel::BaseLogger* get() noexcept;
+} // namespace galay::mysql::log
 
-    static void console()
-    {
-        console("MysqlLogger");
-    }
+/// @brief 判断指定级别的 galay-mysql 日志是否会实际写入
+#define MYSQL_LOG_ENABLED(level)                                                 \
+    GALAY_LOG_ENABLED(::galay::mysql::log::get, level)
 
-    static void console(const std::string& logger_name)
-    {
-        auto instance = getInstance();
-        std::lock_guard<std::mutex> lock(instance->m_mutex);
-        try {
-            auto logger = spdlog::get(logger_name);
-            if (!logger) {
-                logger = spdlog::stdout_color_mt(logger_name);
-            }
-            applyDefault(logger);
-            instance->m_logger = std::move(logger);
-        } catch (const spdlog::spdlog_ex&) {
-            instance->m_logger = spdlog::get(logger_name);
-        }
-    }
+/// @brief galay-mysql 追踪日志宏
+#define MYSQL_LOG_TRACE(tag, ...)                                                \
+    GALAY_LOG_WITH_LOGGER(::galay::mysql::log::get,                              \
+                          ::galay::kernel::LogLevel::kTrace, "[mysql] " tag,     \
+                          __VA_ARGS__)
 
-    static void file(const std::string& log_file_path = "galay-mysql.log",
-                     const std::string& logger_name = "MysqlLogger",
-                     bool truncate = false)
-    {
-        auto instance = getInstance();
-        std::lock_guard<std::mutex> lock(instance->m_mutex);
-        auto logger = std::make_shared<spdlog::logger>(
-            logger_name,
-            std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_file_path, !truncate));
-        applyDefault(logger);
-        instance->m_logger = std::move(logger);
-    }
+/// @brief galay-mysql 调试日志宏
+#define MYSQL_LOG_DEBUG(tag, ...)                                                \
+    GALAY_LOG_WITH_LOGGER(::galay::mysql::log::get,                              \
+                          ::galay::kernel::LogLevel::kDebug, "[mysql] " tag,     \
+                          __VA_ARGS__)
 
-    static void disable()
-    {
-        auto instance = getInstance();
-        std::lock_guard<std::mutex> lock(instance->m_mutex);
-        if (instance->m_logger) {
-            instance->m_logger->set_level(spdlog::level::off);
-        }
-        instance->m_logger.reset();
-    }
+/// @brief galay-mysql 信息日志宏
+#define MYSQL_LOG_INFO(tag, ...)                                                 \
+    GALAY_LOG_WITH_LOGGER(::galay::mysql::log::get,                              \
+                          ::galay::kernel::LogLevel::kInfo, "[mysql] " tag,      \
+                          __VA_ARGS__)
 
-    static void setLogger(MysqlLoggerPtr logger)
-    {
-        auto instance = getInstance();
-        std::lock_guard<std::mutex> lock(instance->m_mutex);
-        instance->m_logger = std::move(logger);
-    }
+/// @brief galay-mysql 警告日志宏
+#define MYSQL_LOG_WARN(tag, ...)                                                 \
+    GALAY_LOG_WITH_LOGGER(::galay::mysql::log::get,                              \
+                          ::galay::kernel::LogLevel::kWarn, "[mysql] " tag,      \
+                          __VA_ARGS__)
 
-    MysqlLoggerPtr getLogger() const
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        return m_logger;
-    }
-
-private:
-    static void applyDefault(const MysqlLoggerPtr& logger)
-    {
-        if (!logger) {
-            return;
-        }
-        logger->set_pattern("[%Y-%m-%d %T.%e] [%^%L%$] [%s:%#] %v");
-#ifdef ENABLE_DEBUG
-        logger->set_level(spdlog::level::debug);
-#else
-        logger->set_level(spdlog::level::info);
-#endif
-    }
-
-private:
-    mutable std::mutex m_mutex;
-    MysqlLoggerPtr m_logger;
-};
-
-namespace detail
-{
-inline MysqlLoggerPtr resolveLogger(const MysqlLoggerPtr& logger)
-{
-    if (logger) {
-        return logger;
-    }
-    return MysqlLog::getInstance()->getLogger();
-}
-} // namespace detail
-
-} // namespace galay::mysql
-
-#define MysqlLogTrace(logger, ...) \
-    do { auto _logger = ::galay::mysql::detail::resolveLogger((logger)); if (_logger) SPDLOG_LOGGER_TRACE(_logger, __VA_ARGS__); } while (0)
-
-#define MysqlLogDebug(logger, ...) \
-    do { auto _logger = ::galay::mysql::detail::resolveLogger((logger)); if (_logger) SPDLOG_LOGGER_DEBUG(_logger, __VA_ARGS__); } while (0)
-
-#define MysqlLogInfo(logger, ...) \
-    do { auto _logger = ::galay::mysql::detail::resolveLogger((logger)); if (_logger) SPDLOG_LOGGER_INFO(_logger, __VA_ARGS__); } while (0)
-
-#define MysqlLogWarn(logger, ...) \
-    do { auto _logger = ::galay::mysql::detail::resolveLogger((logger)); if (_logger) SPDLOG_LOGGER_WARN(_logger, __VA_ARGS__); } while (0)
-
-#define MysqlLogError(logger, ...) \
-    do { auto _logger = ::galay::mysql::detail::resolveLogger((logger)); if (_logger) SPDLOG_LOGGER_ERROR(_logger, __VA_ARGS__); } while (0)
+/// @brief galay-mysql 错误日志宏
+#define MYSQL_LOG_ERROR(tag, ...)                                                \
+    GALAY_LOG_WITH_LOGGER(::galay::mysql::log::get,                              \
+                          ::galay::kernel::LogLevel::kError, "[mysql] " tag,     \
+                          __VA_ARGS__)
 
 #endif // GALAY_MYSQL_LOG_H

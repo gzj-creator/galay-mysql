@@ -58,3 +58,14 @@
   - 将安装导出的 CMake targets 文件改为 `galayMysqlConfigTargets.cmake`，并同步 `galay-mysql-config.cmake` 的 include 路径。
   - package consumer smoke 检查改为验证新的驼峰 targets 文件名，覆盖安装包导出契约。
   - 将 CMake project 版本提升到 `2.0.2`，确保源码版本元数据、tag 与发布记录一致。
+
+## v2.1.0 - 2026-05-20
+
+- 版本级别：中版本（minor）
+- Git 提交消息：`feat: 增加 mysql 库级 BaseLogger 日志入口`
+- Git Tag：`v2.1.0`
+- 自述摘要：
+  - 新增 `galay::mysql::log::set/get`，用户可只为 `galay-mysql` 设置 `BaseLogger`，不会影响其他 galay 库日志。
+  - 新增 `MYSQL_LOG_*` 与 `MYSQL_LOG_ENABLED`，并在连接成功、查询发送/接收失败路径增加按级别过滤的日志埋点。
+  - 移除 `spdlog` 构建依赖和旧的客户端级 logger 设置接口，改为库级 `BaseLogger` 注入。
+  - 将 `galay-kernel` 依赖约束同步提升到 `5.0.0`，项目版本提升到 `2.1.0`。

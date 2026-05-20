@@ -20,7 +20,7 @@
 说明：
 
 - 本页覆盖仓库自有、供消费者直接使用的 API。
-- `galay-kernel` / `spdlog` 的上游类型虽然会出现在签名中，但不在此重复展开。
+- `galay-kernel` 的上游类型虽然会出现在签名中，但不在此重复展开。
 - `client.h` 中为协程链路暴露的 `Protocol*Awaitable`、生命周期枚举和底层 I/O context 虽然可见，但按实现细节处理；这里记录外部代码应直接依赖的 awaitable / client / protocol API。
 
 ## API / 示例 / 测试锚点速查
@@ -261,36 +261,25 @@ public:
 
 ## 日志
 
-### `MysqlLoggerPtr` / `MysqlLog`
+### `galay::mysql::log::set/get`
 
 ```cpp
-using MysqlLoggerPtr = std::shared_ptr<spdlog::logger>;
-
-class MysqlLog {
-public:
-    static MysqlLog* getInstance();
-    static void enable();
-    static void console();
-    static void console(const std::string& logger_name);
-    static void file(const std::string& log_file_path = "galay-mysql.log",
-                     const std::string& logger_name = "MysqlLogger",
-                     bool truncate = false);
-    static void disable();
-    static void setLogger(MysqlLoggerPtr logger);
-
-    MysqlLoggerPtr getLogger() const;
-};
+namespace galay::mysql::log {
+void set(::galay::kernel::BaseLogger::uptr logger);
+[[nodiscard]] ::galay::kernel::BaseLogger* get() noexcept;
+}
 ```
 
 日志宏同样属于安装公开面：
 
-- `MysqlLogTrace`
-- `MysqlLogDebug`
-- `MysqlLogInfo`
-- `MysqlLogWarn`
-- `MysqlLogError`
+- `MYSQL_LOG_TRACE`
+- `MYSQL_LOG_DEBUG`
+- `MYSQL_LOG_INFO`
+- `MYSQL_LOG_WARN`
+- `MYSQL_LOG_ERROR`
+- `MYSQL_LOG_ENABLED`
 
-这些宏会先解析显式传入的 logger；如果传入空指针，则回退到 `MysqlLog::getInstance()->getLogger()`。
+这些宏只读取 `galay::mysql::log::set()` 注入的库级 logger。未设置 logger 或日志级别低于 `minLevel()` 时，不会执行 `std::format`。
 
 ## 缓冲抽象
 
@@ -412,8 +401,6 @@ public:
     protocol::MysqlEncoder& encoder();
     uint32_t serverCapabilities() const;
     void setServerCapabilities(uint32_t caps);
-    MysqlLoggerPtr& logger();
-    void setLogger(MysqlLoggerPtr logger);
 };
 ```
 
@@ -421,7 +408,6 @@ public:
 
 - 注入或观察底层 socket / ring buffer
 - 直接访问协议 parser / encoder 做高级扩展
-- 覆盖默认 logger
 - 调试 server capability 协商结果
 
 使用约束：
@@ -942,5 +928,5 @@ target_link_libraries(app PRIVATE galay-mysql::galay-mysql)
 - 同步 `close()` 是普通函数；异步 `close()` 需要 `co_await client.close();`
 - `pipeline()` 直接接受 `std::span<const std::string_view>`；`batch()` 接受更底层的 `MysqlCommandView`
 - 异步 `stmtExecute()` 同时支持 `std::string` 与 `std::string_view` 参数层
-- `AsyncMysqlClient::bufferProvider()` / `parser()` / `encoder()` / `logger()` 等 accessor 已经是公开面，适合高级扩展或测试注入
+- `AsyncMysqlClient::bufferProvider()` / `parser()` / `encoder()` 等 accessor 已经是公开面，适合高级扩展或测试注入
 - import / module 文档里的 target 名应与 `examples/CMakeLists.txt` 真实 target 保持一致，不再使用额外别名

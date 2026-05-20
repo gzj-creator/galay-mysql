@@ -89,12 +89,6 @@
 #if __has_include(<span>)
 #include <span>
 #endif
-#if __has_include(<spdlog/sinks/stdout_color_sinks.h>)
-#include <spdlog/sinks/stdout_color_sinks.h>
-#endif
-#if __has_include(<spdlog/spdlog.h>)
-#include <spdlog/spdlog.h>
-#endif
 #if __has_include(<stdexcept>)
 #include <stdexcept>
 #endif

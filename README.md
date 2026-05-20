@@ -34,7 +34,7 @@
 
 | 场景 | 当前仓库真实要求 |
 | --- | --- |
-| include 头文件路径 | CMake `>= 3.20`，可用的 C++23 / `std::expected` 工具链，依赖 `galay-kernel (>= 3.4.4)`、OpenSSL、spdlog |
+| include 头文件路径 | CMake `>= 3.20`，可用的 C++23 / `std::expected` 工具链，依赖 `galay-kernel (>= 5.0.0)`、OpenSSL |
 | import / module 路径 | CMake `>= 3.28`，`Ninja` 或 `Visual Studio` 生成器，并开启 `GALAY_MYSQL_ENABLE_IMPORT_COMPILATION=ON` |
 | GCC import 稳定路径 | `Linux + GCC >= 14` |
 | Clang import 路径 | 非 `AppleClang`，且能找到 `clang-scan-deps` |
@@ -66,7 +66,6 @@ cmake --build build --parallel
 
 - `galay-kernel`（必需）
 - OpenSSL（必需）
-- spdlog（必需）
 - MySQL 服务端（运行 examples/tests/benchmarks 时必需）
 
 默认会优先尝试以下 sibling 前缀（若存在）：
@@ -93,6 +92,18 @@ target_link_libraries(app PRIVATE galay-mysql::galay-mysql)
 ```
 
 安装目录中的主配置文件是 `galay-mysql-config.cmake`；文档统一以 `galay-mysql` 作为包名。
+
+## 库级日志
+
+`galay-mysql` 使用独立的库级日志入口，用户只需要为 MySQL 库设置 logger：
+
+```cpp
+#include "galay-mysql/base/mysql_log.h"
+
+galay::mysql::log::set(std::make_unique<MyLogger>());
+```
+
+`MyLogger` 继承 `galay::kernel::BaseLogger`。未设置 logger 时，`MYSQL_LOG_*` 埋点不会执行 `std::format`；日志级别低于 `minLevel()` 时也不会格式化消息。只设置 `galay::mysql::log::set()` 不会启用其他 galay 库的日志。
 
 头文件入口：
 

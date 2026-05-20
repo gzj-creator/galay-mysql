@@ -7,6 +7,7 @@ export module galay.mysql;
 export {
 #include "galay-mysql/base/mysql_config.h"
 #include "galay-mysql/base/mysql_error.h"
+#include "galay-mysql/base/mysql_log.h"
 #include "galay-mysql/base/mysql_value.h"
 #include "galay-mysql/async/config.h"
 #include "galay-mysql/async/client.h"

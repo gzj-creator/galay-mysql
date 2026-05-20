@@ -645,9 +645,6 @@ public:
     const AsyncMysqlConfig& asyncConfig() const { return m_config; }
     uint32_t serverCapabilities() const { return m_server_capabilities; }
     void setServerCapabilities(uint32_t caps) { m_server_capabilities = caps; }
-    MysqlLoggerPtr& logger() { return m_logger; }
-    void setLogger(MysqlLoggerPtr logger) { m_logger = std::move(logger); }
-
 private:
     friend class MysqlConnectAwaitable;
     friend class MysqlQueryAwaitable;
@@ -664,7 +661,6 @@ private:
     MysqlBufferHandle m_ring_buffer;
     uint32_t m_server_capabilities = 0;
 
-    MysqlLoggerPtr m_logger;
 };
 
 inline galay::mysql::AsyncMysqlClient galay::mysql::AsyncMysqlClientBuilder::build() const

@@ -57,6 +57,9 @@ add_mysql_test(t8_surface t8_surface.cc)
 # t9 - Config env override surface
 add_mysql_test(t9_env t9_env.cc)
 
+# t10 - MySQL 库级日志入口测试
+add_mysql_test(t10_log t10_log.cc)
+
 add_test(
     NAME PackageConfig.ConsumerSmoke
     COMMAND

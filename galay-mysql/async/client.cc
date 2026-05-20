@@ -249,8 +249,7 @@ void MysqlConnectAwaitable::Machine::completeSuccess() noexcept
     m_state->connected = true;
     m_state->phase = Phase::Done;
     m_state->result = std::optional<bool>(true);
-    MysqlLogInfo(m_state->client->logger(),
-                 "MySQL connected successfully to {}:{}",
+    MYSQL_LOG_INFO("[client]", "MySQL connected successfully to {}:{}",
                  m_state->config.host,
                  m_state->config.port);
 }
@@ -634,13 +633,13 @@ void MysqlQueryAwaitable::Machine::setError(MysqlError error) noexcept
 
 void MysqlQueryAwaitable::Machine::setSendError(const IOError& io_error) noexcept
 {
-    MysqlLogDebug(m_state->client->logger(), "send query failed: {}", io_error.message());
+    MYSQL_LOG_DEBUG("[client]", "send query failed: {}", io_error.message());
     setError(detail::mapAwaitableIoError(io_error, MYSQL_ERROR_SEND));
 }
 
 void MysqlQueryAwaitable::Machine::setRecvError(const IOError& io_error) noexcept
 {
-    MysqlLogDebug(m_state->client->logger(), "recv query failed: {}", io_error.message());
+    MYSQL_LOG_DEBUG("[client]", "recv query failed: {}", io_error.message());
     setError(detail::mapAwaitableIoError(io_error, MYSQL_ERROR_RECV));
 }
 
@@ -1895,7 +1894,6 @@ AsyncMysqlClient::AsyncMysqlClient(IOScheduler* scheduler,
     , m_config(std::move(config))
     , m_ring_buffer(m_config.buffer_size, std::move(buffer_provider))
 {
-    m_logger = MysqlLog::getInstance()->getLogger();
 }
 
 AsyncMysqlClient::AsyncMysqlClient(AsyncMysqlClient&& other) noexcept
@@ -1907,7 +1905,6 @@ AsyncMysqlClient::AsyncMysqlClient(AsyncMysqlClient&& other) noexcept
     , m_config(std::move(other.m_config))
     , m_ring_buffer(std::move(other.m_ring_buffer))
     , m_server_capabilities(other.m_server_capabilities)
-    , m_logger(std::move(other.m_logger))
 {
     other.m_is_closed = true;
 }
@@ -1923,7 +1920,6 @@ AsyncMysqlClient& AsyncMysqlClient::operator=(AsyncMysqlClient&& other) noexcept
         m_config = std::move(other.m_config);
         m_ring_buffer = std::move(other.m_ring_buffer);
         m_server_capabilities = other.m_server_capabilities;
-        m_logger = std::move(other.m_logger);
         other.m_is_closed = true;
     }
     return *this;

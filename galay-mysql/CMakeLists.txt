@@ -1,15 +1,6 @@
-find_package(galay-kernel 4.0.0 CONFIG REQUIRED)
+find_package(galay-kernel 5.0.0 CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
-find_package(spdlog REQUIRED)
 find_package(Threads REQUIRED)
-
-if(TARGET spdlog::spdlog_header_only)
-    set(GALAY_MYSQL_SPDLOG_TARGET spdlog::spdlog_header_only)
-elseif(TARGET spdlog::spdlog)
-    set(GALAY_MYSQL_SPDLOG_TARGET spdlog::spdlog)
-else()
-    message(FATAL_ERROR "spdlog package did not provide spdlog::spdlog or spdlog::spdlog_header_only")
-endif()
 
 file(GLOB SOURCES "base/*.cc" "async/*.cc" "protocol/*.cc" "sync/*.cc")
 
@@ -29,7 +20,6 @@ target_link_libraries(${PROJECT_NAME}
     PUBLIC OpenSSL::SSL
     PUBLIC OpenSSL::Crypto
     PUBLIC Threads::Threads
-    PUBLIC ${GALAY_MYSQL_SPDLOG_TARGET}
 )
 
 target_include_directories(${PROJECT_NAME}
