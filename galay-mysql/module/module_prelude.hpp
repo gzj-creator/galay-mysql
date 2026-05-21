@@ -1,6 +1,15 @@
+/**
+ * @file module_prelude.hpp
+ * @brief C++23模块构建的前置头文件
+ * @author galay-mysql
+ * @version 1.0.0
+ *
+ * @details 为过渡性的C++23模块构建(clang/GCC/MSVC)提供自动前置包含。
+ *          将第三方、系统和依赖库的头文件放入全局模块片段中，
+ *          确保模块构建时正确处理外部依赖。
+ */
+
 #pragma once
-// Auto prelude for transitional C++23 module builds on Clang/GCC/MSVC.
-// Keep third-party/system/dependency headers in global module fragment.
 
 #if __has_include(<algorithm>)
 #include <algorithm>

@@ -1,3 +1,13 @@
+/**
+ * @file mysql_auth.h
+ * @brief MySQL认证插件实现
+ * @author galay-mysql
+ * @version 1.0.0
+ *
+ * @details 提供MySQL协议中常用的认证算法实现，包括mysql_native_password、
+ *          caching_sha2_password的快速认证和全量认证（RSA公钥加密）。
+ */
+
 #ifndef GALAY_MYSQL_AUTH_H
 #define GALAY_MYSQL_AUTH_H
 

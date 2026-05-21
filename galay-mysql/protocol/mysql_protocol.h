@@ -1,3 +1,15 @@
+/**
+ * @file mysql_protocol.h
+ * @brief MySQL协议解析器与编码器
+ * @author galay-mysql
+ * @version 1.0.0
+ *
+ * @details 定义了MySQL协议的辅助读写函数（长度编码整数/字符串、固定长度整数等）、
+ *          协议解析器(MysqlParser)和协议编码器(MysqlEncoder)。
+ *          解析器支持解析握手包、OK包、ERR包、EOF包、列定义包、行数据等。
+ *          编码器支持编码认证响应、查询命令、预处理语句命令等。
+ */
+
 #ifndef GALAY_MYSQL_PROTOCOL_H
 #define GALAY_MYSQL_PROTOCOL_H
 
@@ -67,6 +79,11 @@ void writeLenEncString(std::string& buf, std::string_view str);
 
 // ======================== 解析器 ========================
 
+/**
+ * @brief MySQL协议解析器
+ * @details 负责解析MySQL协议的各种数据包，包括握手包、OK/ERR/EOF包、
+ *          列定义包、行数据包以及预处理语句响应等。
+ */
 class MysqlParser
 {
 public:
@@ -149,15 +166,20 @@ public:
      * @return payload数据的起始位置和长度
      */
     struct PacketView {
-        const char* payload;
-        uint32_t payload_len;
-        uint8_t sequence_id;
+        const char* payload;     ///< payload数据指针
+        uint32_t payload_len;    ///< payload长度
+        uint8_t sequence_id;     ///< 序列号
     };
     std::expected<PacketView, ParseError> extractPacket(const char* data, size_t len, size_t& consumed);
 };
 
 // ======================== 编码器 ========================
 
+/**
+ * @brief MySQL协议编码器
+ * @details 负责将客户端请求编码为MySQL协议格式的数据包，
+ *          包括认证响应、查询命令、预处理语句命令等。
+ */
 class MysqlEncoder
 {
 public:

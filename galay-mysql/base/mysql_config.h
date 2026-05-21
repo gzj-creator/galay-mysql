@@ -1,3 +1,12 @@
+/**
+ * @file mysql_config.h
+ * @brief MySQL连接配置
+ * @author galay-mysql
+ * @version 1.0.0
+ *
+ * @details 定义MySQL连接所需的主机、端口、用户名、密码、数据库等配置参数。
+ */
+
 #ifndef GALAY_MYSQL_CONFIG_H
 #define GALAY_MYSQL_CONFIG_H
 
@@ -9,19 +18,21 @@ namespace galay::mysql
 
 /**
  * @brief MySQL连接配置
+ * @details 包含MySQL服务器连接所需的全部参数，支持默认值和工厂方法创建。
  */
 struct MysqlConfig
 {
-    std::string host = "127.0.0.1";
-    uint16_t port = 3306;
-    std::string username;
-    std::string password;
-    std::string database;
-    std::string charset = "utf8mb4";
-    uint32_t connect_timeout_ms = 5000;
+    std::string host = "127.0.0.1";     ///< 服务器地址
+    uint16_t port = 3306;               ///< 服务器端口
+    std::string username;               ///< 用户名
+    std::string password;               ///< 密码
+    std::string database;               ///< 默认数据库
+    std::string charset = "utf8mb4";    ///< 字符集
+    uint32_t connect_timeout_ms = 5000; ///< 连接超时（毫秒）
 
     /**
      * @brief 创建默认配置
+     * @return 默认配置对象
      */
     static MysqlConfig defaultConfig()
     {
@@ -30,6 +41,12 @@ struct MysqlConfig
 
     /**
      * @brief 创建指定连接参数的配置
+     * @param host 服务器地址
+     * @param port 服务器端口
+     * @param user 用户名
+     * @param password 密码
+     * @param database 默认数据库
+     * @return 配置对象
      */
     static MysqlConfig create(const std::string& host, uint16_t port,
                               const std::string& user, const std::string& password,
